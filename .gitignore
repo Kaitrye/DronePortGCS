@@ -1,12 +1,14 @@
 *.code-workspace
 .vscode
+.vs
 venv/
 .env
 *.lock
-__pychache__
+__pycache__
 *.vscode
 *.pytest_cache
 *.pyc
+.generated/
 
 .coverage
 coverage.xml
