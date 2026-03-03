@@ -1,4 +1,8 @@
-# docker/.env
+# Инфраструктура брокера (только kafka + mosquitto).
+# Сервисы приложений (системы, компоненты) — в dummy_component/docker/, dummy_system/docker/.
+# name задаёт общий проект: при запуске из корня или из dummy_component используется один и тот же
+# набор контейнеров (один Kafka), без конфликта портов.
+name: drones
 
 services:
   kafka:
@@ -25,30 +29,21 @@ services:
       KAFKA_OPTS: -Djava.security.auth.login.config=/tmp/jaas.conf
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      DUMMY_USER_A: ${DUMMY_USER_A}
-      DUMMY_PASSWORD_A: ${DUMMY_PASSWORD_A}
-      DUMMY_USER_B: ${DUMMY_USER_B}
-      DUMMY_PASSWORD_B: ${DUMMY_PASSWORD_B}
-    command: >
-      sh -c '
-      echo "KafkaServer {
-        org.apache.kafka.common.security.plain.PlainLoginModule required
-        username=\"$$ADMIN_USER\"
-        password=\"$$ADMIN_PASSWORD\"
-        user_$${ADMIN_USER}=\"$$ADMIN_PASSWORD\"
-        user_$${DUMMY_USER_A}=\"$$DUMMY_PASSWORD_A\"
-        user_$${DUMMY_USER_B}=\"$$DUMMY_PASSWORD_B\";
-      };" > /tmp/jaas.conf &&
-      /etc/kafka/docker/run
-      '
+      COMPONENT_USER_A: ${COMPONENT_USER_A:-}
+      COMPONENT_PASSWORD_A: ${COMPONENT_PASSWORD_A:-}
+      COMPONENT_USER_B: ${COMPONENT_USER_B:-}
+      COMPONENT_PASSWORD_B: ${COMPONENT_PASSWORD_B:-}
+    volumes:
+      - ./kafka/entrypoint.sh:/entrypoint.sh:ro
+    command: ["/bin/sh", "/entrypoint.sh"]
     networks:
       - drones_net
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f java || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 8
+      start_period: 60s
     restart: unless-stopped
 
   mosquitto:
@@ -61,25 +56,14 @@ services:
     environment:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      DUMMY_USER_A: ${DUMMY_USER_A}
-      DUMMY_PASSWORD_A: ${DUMMY_PASSWORD_A}
-      DUMMY_USER_B: ${DUMMY_USER_B}
-      DUMMY_PASSWORD_B: ${DUMMY_PASSWORD_B}
+      COMPONENT_USER_A: ${COMPONENT_USER_A:-}
+      COMPONENT_PASSWORD_A: ${COMPONENT_PASSWORD_A:-}
+      COMPONENT_USER_B: ${COMPONENT_USER_B:-}
+      COMPONENT_PASSWORD_B: ${COMPONENT_PASSWORD_B:-}
     volumes:
       - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-    command: >
-      sh -c '
-      rm -f /mosquitto/data/passwd /mosquitto/data/acl &&
-      mosquitto_passwd -b -c /mosquitto/data/passwd $$ADMIN_USER $$ADMIN_PASSWORD &&
-      mosquitto_passwd -b /mosquitto/data/passwd $$DUMMY_USER_A $$DUMMY_PASSWORD_A &&
-      mosquitto_passwd -b /mosquitto/data/passwd $$DUMMY_USER_B $$DUMMY_PASSWORD_B &&
-      printf "user %s\ntopic readwrite #\n\nuser %s\ntopic readwrite systems/#\ntopic readwrite replies/#\ntopic readwrite drones/#\n\nuser %s\ntopic readwrite systems/#\ntopic readwrite replies/#\ntopic readwrite drones/#\n"
-      "$$ADMIN_USER" "$$DUMMY_USER_A" "$$DUMMY_USER_B"
-      > /mosquitto/data/acl &&
-      chown mosquitto:mosquitto /mosquitto/data/passwd /mosquitto/data/acl &&
-      chmod 700 /mosquitto/data/acl &&
-      exec mosquitto -c /mosquitto/config/mosquitto.conf
-      '
+      - ./mqtt/entrypoint.sh:/entrypoint.sh:ro
+    command: ["/bin/sh", "/entrypoint.sh"]
     networks:
       - drones_net
     healthcheck:
@@ -89,345 +73,6 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: gcs_redis_db
-    profiles: ["kafka", "mqtt"]
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    networks:
-      - drones_net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-    restart: unless-stopped
-
-  dummy_system_a:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: dummy_system_a
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-    environment:
-      - SYSTEM_TYPE=dummy
-      - SYSTEM_ID=dummy_system_a
-      - SYSTEM_NAME=DummyA
-      - HEALTH_PORT=${DUMMY_PORT_A:-9700}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${DUMMY_USER_A}
-      - BROKER_PASSWORD=${DUMMY_PASSWORD_A}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${DUMMY_PORT_A:-9700}:${DUMMY_PORT_A:-9700}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  dummy_system_b:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: dummy_system_b
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-    environment:
-      - SYSTEM_TYPE=dummy
-      - SYSTEM_ID=dummy_system_b
-      - SYSTEM_NAME=DummyB
-      - HEALTH_PORT=${DUMMY_PORT_B:-9701}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${DUMMY_USER_B}
-      - BROKER_PASSWORD=${DUMMY_PASSWORD_B}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${DUMMY_PORT_B:-9701}:${DUMMY_PORT_B:-9701}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  gcs_redis_component:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: gcs_redis_component
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-    environment:
-      - SYSTEM_TYPE=gcs_redis
-      - SYSTEM_ID=gcs_redis_component
-      - HEALTH_PORT=${GCS_REDIS_PORT:-9806}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${GCS_REDIS_PORT:-9806}:${GCS_REDIS_PORT:-9806}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  gcs_mission:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: gcs_mission
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-      gcs_redis_component:
-        condition: service_started
-    environment:
-      - SYSTEM_TYPE=gcs_mission
-      - SYSTEM_ID=gcs_mission_001
-      - HEALTH_PORT=${GCS_MISSION_PORT:-9800}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${GCS_MISSION_PORT:-9800}:${GCS_MISSION_PORT:-9800}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  gcs_orchestrator:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: gcs_orchestrator
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-      gcs_redis_component:
-        condition: service_started
-      gcs_fleet:
-        condition: service_started
-      gcs_robot:
-        condition: service_started
-    environment:
-      - SYSTEM_TYPE=gcs_orchestrator
-      - SYSTEM_ID=gcs_orchestrator_001
-      - HEALTH_PORT=${GCS_ORCHESTRATOR_PORT:-9801}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${GCS_ORCHESTRATOR_PORT:-9801}:${GCS_ORCHESTRATOR_PORT:-9801}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  gcs_fleet:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: gcs_fleet
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-      gcs_redis_component:
-        condition: service_started
-    environment:
-      - SYSTEM_TYPE=gcs_fleet
-      - SYSTEM_ID=gcs_fleet_001
-      - HEALTH_PORT=${GCS_FLEET_PORT:-9802}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${GCS_FLEET_PORT:-9802}:${GCS_FLEET_PORT:-9802}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  gcs_robot:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: gcs_robot
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-      gcs_redis_component:
-        condition: service_started
-    environment:
-      - SYSTEM_TYPE=gcs_robot
-      - SYSTEM_ID=gcs_robot_001
-      - HEALTH_PORT=${GCS_ROBOT_PORT:-9803}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${GCS_ROBOT_PORT:-9803}:${GCS_ROBOT_PORT:-9803}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  gcs_telemetry:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: gcs_telemetry
-    profiles: ["kafka", "mqtt"]
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-      gcs_redis_component:
-        condition: service_started
-    environment:
-      - SYSTEM_TYPE=gcs_telemetry
-      - SYSTEM_ID=gcs_telemetry_001
-      - HEALTH_PORT=${GCS_TELEMETRY_PORT:-9804}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - KAFKA_SASL_ENABLED=${KAFKA_SASL_ENABLED:-true}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "${GCS_TELEMETRY_PORT:-9804}:${GCS_TELEMETRY_PORT:-9804}"
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  test-runner:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.test
-    depends_on:
-      kafka:
-        condition: service_healthy
-        required: false
-      mosquitto:
-        condition: service_healthy
-        required: false
-    environment:
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_HOST=${BROKER_HOST:-kafka}
-      - KAFKA_PORT=${KAFKA_INTERNAL_PORT:-29092}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MQTT_PORT=${MQTT_PORT:-1883}
-      - ADMIN_USER=${ADMIN_USER:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - COVERAGE_FILE=/tmp/.coverage
-      - PYTHONUNBUFFERED=1
-    command: pytest -c config/pyproject.toml tests/ -v --cov=. --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=html:htmlcov
-    volumes:
-      - ..:/app
-    networks:
-      - drones_net
 
 networks:
   drones_net:

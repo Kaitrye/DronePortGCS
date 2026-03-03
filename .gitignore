@@ -11,3 +11,5 @@ __pychache__
 .coverage
 coverage.xml
 htmlcov/
+
+.generated/
