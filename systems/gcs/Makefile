@@ -10,8 +10,8 @@ help:
 	@echo "make docker-up         - Запустить систему (prepare + docker compose up)"
 	@echo "make docker-down       - Остановить систему"
 	@echo "make docker-logs       - Логи"
-	@echo "make unit-test         - Unit тесты компонентов"
-	@echo "make integration-test  - Интеграционные тесты (docker required)"
+	@echo "make unit-test         - Проверка импортов/синтаксиса компонентов GCS"
+	@echo "make integration-test  - Smoke интеграция (подъём GCS-стека)"
 	@echo "make tests             - Все тесты"
 
 prepare:
@@ -19,33 +19,24 @@ prepare:
 
 docker-up: prepare
 	@set -a && . $(GENERATED)/.env && set +a && \
-		profiles="--profile $${BROKER_TYPE:-kafka}"; \
-		[ "$${ENABLE_ELK:-false}" = "true" ] && profiles="$$profiles --profile elk"; \
-		[ "$${ENABLE_FABRIC:-false}" = "true" ] && profiles="$$profiles --profile fabric"; \
-		$(DOCKER_COMPOSE) $$profiles up -d --build
+		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build
 
 docker-down:
-	@set -a && . $(GENERATED)/.env && set +a && \
-		profiles="--profile $${BROKER_TYPE:-kafka}"; \
-		[ "$${ENABLE_ELK:-false}" = "true" ] && profiles="$$profiles --profile elk"; \
-		[ "$${ENABLE_FABRIC:-false}" = "true" ] && profiles="$$profiles --profile fabric"; \
-		$(DOCKER_COMPOSE) $$profiles down 2>/dev/null || true
+	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null
+	-$(DOCKER_COMPOSE) --profile mqtt down 2>/dev/null
 
 docker-logs:
 	@set -a && . $(GENERATED)/.env && set +a && \
-		profiles="--profile $${BROKER_TYPE:-kafka}"; \
-		[ "$${ENABLE_ELK:-false}" = "true" ] && profiles="$$profiles --profile elk"; \
-		[ "$${ENABLE_FABRIC:-false}" = "true" ] && profiles="$$profiles --profile fabric"; \
-		$(DOCKER_COMPOSE) $$profiles logs -f
+		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-kafka} logs -f
 
 unit-test:
-	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) tests/test_dummy_unit.py -v
+	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python -m compileall components src -q
 
 integration-test: docker-up
-	@echo "Waiting for broker and components..."
-	@sleep 45
+	@echo "Waiting for broker and gcs components..."
+	@sleep 30
 	@set -a && . $(GENERATED)/.env && set +a && \
-		PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) tests/test_integration.py -v
+		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-kafka} ps
 	-$(MAKE) docker-down
 
 tests: unit-test integration-test

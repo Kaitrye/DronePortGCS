@@ -1,4 +1,4 @@
-.PHONY: help prepare init unit-test tests docker-up docker-down docker-logs docker-ps docker-clean
+.PHONY: help init unit-test integration-test tests docker-up docker-down docker-logs docker-ps docker-clean dummy-system-up dummy-system-down
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
 LOAD_ENV = set -a && . docker/.env && set +a
@@ -6,23 +6,15 @@ PIPENV_PIPFILE = config/Pipfile
 PYTEST_CONFIG = config/pyproject.toml
 
 help:
-	@echo "make prepare           - Установить системные пакеты (apt: python3, pip, docker, docker-compose, pipenv)"
-	@echo "make init              - Установить pipenv и Python-зависимости проекта"
-	@echo "make unit-test         - Unit тесты (SDK + broker + компоненты)"
+	@echo "make init              - Установить pipenv и зависимости"
+	@echo "make unit-test         - Unit тесты (SDK + broker + standalone компоненты)"
+	@echo "make integration-test  - Интеграционные тесты (общие + dummy_system, docker required)"
 	@echo "make tests             - Все тесты"
 	@echo "make docker-up         - Запустить инфраструктуру брокера"
 	@echo "make docker-down       - Остановить"
 	@echo "make docker-logs       - Логи"
 	@echo "make docker-ps         - Статус"
 	@echo "make docker-clean      - Очистка"
-
-prepare:
-	@echo "Установка системных пакетов через apt..."
-	@command -v apt-get >/dev/null 2>&1 || { echo "Ошибка: apt-get не найден. make prepare поддерживает только Debian/Ubuntu (apt)."; exit 1; }
-	sudo apt-get update
-	sudo apt-get install -y python3 python3-pip python3-venv docker.io docker-compose-v2
-	pip3 install --user pipenv
-	@echo "Готово. Следующий шаг: make init"
 
 init:
 	@command -v pipenv >/dev/null 2>&1 || pip install pipenv
@@ -32,20 +24,35 @@ unit-test:
 	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
 		tests/unit/ \
 		components/dummy_component/tests/ \
+		systems/dummy_system/tests/test_dummy_unit.py \
 		-v
 
-tests: unit-test
+integration-test: dummy-system-up
+	@echo "Waiting for broker and components..."
+	@sleep 45
+	@$(LOAD_ENV) && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
+		tests/integration/ \
+		systems/dummy_system/tests/test_integration.py \
+		-v
+	-$(MAKE) dummy-system-down
+
+dummy-system-up:
+	@$(MAKE) -C systems/dummy_system docker-up
+
+dummy-system-down:
+	-$(MAKE) -C systems/dummy_system docker-down
+
+tests: unit-test integration-test
 
 docker-up:
 	@test -f docker/.env || cp docker/example.env docker/.env
-	@set -a && . docker/.env && set +a && \
-		profiles="--profile $${BROKER_TYPE:-kafka}"; \
-		[ "$${ENABLE_ELK:-false}" = "true" ] && profiles="$$profiles --profile elk"; \
-		$(DOCKER_COMPOSE) $$profiles up -d
+	@profile=$${BROKER_TYPE:-$$(grep '^BROKER_TYPE=' docker/.env 2>/dev/null | cut -d= -f2)}; \
+	profile=$${profile:-kafka}; \
+	$(DOCKER_COMPOSE) --profile $$profile up -d
 
 docker-down:
-	-$(DOCKER_COMPOSE) --profile kafka --profile elk down 2>/dev/null
-	-$(DOCKER_COMPOSE) --profile mqtt --profile elk down 2>/dev/null
+	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null
+	-$(DOCKER_COMPOSE) --profile mqtt down 2>/dev/null
 
 docker-logs:
 	$(DOCKER_COMPOSE) --profile $$(grep BROKER_TYPE docker/.env | cut -d= -f2) logs -f

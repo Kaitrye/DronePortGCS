@@ -4,12 +4,9 @@ import threading
 import time
 import asyncio
 import os
-from datetime import datetime, timezone
 from typing import Callable, Dict, Any, Optional
 from uuid import uuid4
 from concurrent.futures import Future
-
-LOGS_TOPIC = "logs.application"
 
 try:
     from kafka import KafkaProducer, KafkaConsumer
@@ -116,31 +113,12 @@ class KafkaSystemBus(SystemBus):
         
         print("KafkaSystemBus stopped")
 
-    def _mirror_to_logs(self, direction: str, topic: str, message: Dict[str, Any]) -> None:
-        """Копирует сообщение в logs.application при ENABLE_ELK=true."""
-        if os.environ.get("ENABLE_ELK", "").lower() not in ("1", "true", "yes"):
-            return
-        if topic == LOGS_TOPIC:
-            return
-        try:
-            self._init_producer()
-            log_msg = {
-                "direction": direction,
-                "topic": topic,
-                "message": message,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            self._producer.send(LOGS_TOPIC, log_msg)
-        except Exception:
-            pass
-
     def publish(self, topic: str, message: Dict[str, Any]) -> bool:
         """Публикует сообщение в топик."""
         self._init_producer()
         try:
             future = self._producer.send(topic, message)
             future.get(timeout=10)
-            self._mirror_to_logs("out", topic, message)
             return True
         except KafkaError as e:
             print(f"Error publishing to Kafka topic {topic}: {e}")
@@ -166,7 +144,6 @@ class KafkaSystemBus(SystemBus):
                     for record in records:
                         try:
                             message = record.value
-                            self._mirror_to_logs("in", topic, message)
                             callback(message)
                         except Exception as e:
                             print(f"Error processing message from {topic}: {e}")

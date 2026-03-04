@@ -75,9 +75,7 @@ def prepare_system(system_dir: str):
     broker_compose = yaml.safe_load(broker_compose_path.read_text())
     system_compose = yaml.safe_load(system_compose_path.read_text())
 
-    example_env = parse_env_file(root / "docker" / "example.env")
     root_env = parse_env_file(root / "docker" / ".env")
-    root_env = {**example_env, **root_env}
 
     # Discover components and their .env files (under system src/)
     components_dir = system_path / "src"
@@ -100,16 +98,19 @@ def prepare_system(system_dir: str):
         merged_env[f"COMPONENT_USER_{suffix}"] = env.get("BROKER_USER", "")
         merged_env[f"COMPONENT_PASSWORD_{suffix}"] = env.get("BROKER_PASSWORD", "")
 
-    # --- Rewrite broker volume paths and build context ---
+    existing_suffixes = []
+    for key, value in root_env.items():
+        if key.startswith("COMPONENT_USER_") and value:
+            existing_suffixes.append(key.removeprefix("COMPONENT_USER_"))
+
+    all_suffixes = sorted(set(existing_suffixes + suffixes))
+
+    # --- Rewrite broker volume paths ---
     broker_dir = broker_compose_path.parent
     broker_services = deepcopy(broker_compose.get("services", {}))
     for svc_name, svc in broker_services.items():
         if "volumes" in svc:
             svc["volumes"] = rewrite_volumes(svc["volumes"], broker_dir, output_dir)
-        if "build" in svc:
-            build = svc["build"]
-            if isinstance(build, dict) and "context" in build:
-                build["context"] = rewrite_path(build["context"], broker_dir, output_dir)
 
         # Update broker env: replace hardcoded COMPONENT_USER_* with discovered ones
         env_block = svc.get("environment", {})
@@ -128,7 +129,7 @@ def prepare_system(system_dir: str):
         for k in keys_to_remove:
             del env_block[k]
 
-        for suffix in suffixes:
+        for suffix in all_suffixes:
             env_block[f"COMPONENT_USER_{suffix}"] = f"${{COMPONENT_USER_{suffix}:-}}"
             env_block[f"COMPONENT_PASSWORD_{suffix}"] = f"${{COMPONENT_PASSWORD_{suffix}:-}}"
 
@@ -184,7 +185,7 @@ def prepare_system(system_dir: str):
     print(f"Generated: {compose_out}")
     print(f"Generated: {env_out}")
     print(f"Components: {', '.join(component_envs.keys())}")
-    print(f"Credentials mapped: {', '.join(f'COMPONENT_USER_{s}' for s in suffixes)}")
+    print(f"Credentials mapped: {', '.join(f'COMPONENT_USER_{s}' for s in all_suffixes)}")
     print()
     print("To start:")
     broker_type = merged_env.get("BROKER_TYPE", "kafka")

@@ -10,7 +10,6 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=dummy_component_a
-      - ENABLE_ELK=${ENABLE_ELK:-false}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${COMPONENT_USER_A:-${ADMIN_USER:-admin}}
       - BROKER_PASSWORD=${COMPONENT_PASSWORD_A:-${ADMIN_PASSWORD:-admin123}}
@@ -29,7 +28,6 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=dummy_component_b
-      - ENABLE_ELK=${ENABLE_ELK:-false}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${COMPONENT_USER_B:-${ADMIN_USER:-admin}}
       - BROKER_PASSWORD=${COMPONENT_PASSWORD_B:-${ADMIN_PASSWORD:-admin123}}
