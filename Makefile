@@ -27,7 +27,7 @@ unit-test:
 		systems/dummy_system/tests/test_dummy_unit.py \
 		-v
 
-integration-test: dummy-system-up
+integration-test: docker-up dummy-system-up
 	@echo "Waiting for broker and components..."
 	@sleep 45
 	@$(LOAD_ENV) && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
@@ -46,9 +46,8 @@ tests: unit-test integration-test
 
 docker-up:
 	@test -f docker/.env || cp docker/example.env docker/.env
-	@profile=$${BROKER_TYPE:-$$(grep '^BROKER_TYPE=' docker/.env 2>/dev/null | cut -d= -f2)}; \
-	profile=$${profile:-kafka}; \
-	$(DOCKER_COMPOSE) --profile $$profile up -d
+	@$(LOAD_ENV) && profile="--profile $${BROKER_TYPE:-kafka}"; \
+	$(DOCKER_COMPOSE) $$profile up -d
 
 docker-down:
 	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null

@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ci-setup]
   pull_request:
-    branches: [main]
 
 jobs:
   test:
@@ -26,11 +24,11 @@ jobs:
     - name: Copy .env
       run: cp docker/example.env docker/.env
 
-    - name: Docker Up
-      run: make docker-up
+    - name: Initialization
+      run: make init
 
-    - name: Run tests only
-      run: make run-tests-only
+    - name: Run unit-tests
+      run: make unit-test
 
-    - name: Docker Down
-      run: make docker-down
+    - name: Run integration-tests
+      run: make integration-test
