@@ -1,4 +1,12 @@
+<<<<<<< HEAD
 # docker/.env
+=======
+# Инфраструктура брокера (только kafka + mosquitto).
+# Сервисы приложений (системы, компоненты) — в dummy_component/docker/, dummy_system/docker/.
+# name задаёт общий проект: при запуске из корня или из dummy_component используется один и тот же
+# набор контейнеров (один Kafka), без конфликта портов.
+name: drones
+>>>>>>> origin/draft_GCS
 
 services:
   kafka:
@@ -25,6 +33,7 @@ services:
       KAFKA_OPTS: -Djava.security.auth.login.config=/tmp/jaas.conf
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+<<<<<<< HEAD
       DUMMY_USER_A: ${DUMMY_USER_A}
       DUMMY_PASSWORD_A: ${DUMMY_PASSWORD_A}
       DUMMY_USER_B: ${DUMMY_USER_B}
@@ -41,14 +50,28 @@ services:
       };" > /tmp/jaas.conf &&
       /etc/kafka/docker/run
       '
+=======
+      COMPONENT_USER_A: ${COMPONENT_USER_A:-}
+      COMPONENT_PASSWORD_A: ${COMPONENT_PASSWORD_A:-}
+      COMPONENT_USER_B: ${COMPONENT_USER_B:-}
+      COMPONENT_PASSWORD_B: ${COMPONENT_PASSWORD_B:-}
+    volumes:
+      - ./kafka/entrypoint.sh:/entrypoint.sh:ro
+    command: ["/bin/sh", "/entrypoint.sh"]
+>>>>>>> origin/draft_GCS
     networks:
       - drones_net
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f java || exit 1"]
       interval: 10s
       timeout: 5s
+<<<<<<< HEAD
       retries: 5
       start_period: 30s
+=======
+      retries: 8
+      start_period: 60s
+>>>>>>> origin/draft_GCS
     restart: unless-stopped
 
   mosquitto:
@@ -61,6 +84,7 @@ services:
     environment:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+<<<<<<< HEAD
       DUMMY_USER_A: ${DUMMY_USER_A}
       DUMMY_PASSWORD_A: ${DUMMY_PASSWORD_A}
       DUMMY_USER_B: ${DUMMY_USER_B}
@@ -80,6 +104,16 @@ services:
       chmod 700 /mosquitto/data/acl &&
       exec mosquitto -c /mosquitto/config/mosquitto.conf
       '
+=======
+      COMPONENT_USER_A: ${COMPONENT_USER_A:-}
+      COMPONENT_PASSWORD_A: ${COMPONENT_PASSWORD_A:-}
+      COMPONENT_USER_B: ${COMPONENT_USER_B:-}
+      COMPONENT_PASSWORD_B: ${COMPONENT_PASSWORD_B:-}
+    volumes:
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mqtt/entrypoint.sh:/entrypoint.sh:ro
+    command: ["/bin/sh", "/entrypoint.sh"]
+>>>>>>> origin/draft_GCS
     networks:
       - drones_net
     healthcheck:
@@ -90,6 +124,7 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+<<<<<<< HEAD
   dummy_system_a:
     build:
       context: ..
@@ -158,3 +193,9 @@ networks:
   drones_net:
     driver: bridge
     name: ${DOCKER_NETWORK:-drones_net}
+=======
+networks:
+  drones_net:
+    driver: bridge
+    name: ${DOCKER_NETWORK:-drones_net}
+>>>>>>> origin/draft_GCS

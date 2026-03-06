@@ -6,4 +6,14 @@ venv/
 __pychache__
 *.vscode
 *.pytest_cache
+<<<<<<< HEAD
 *.pyc
+=======
+*.pyc
+
+.coverage
+coverage.xml
+htmlcov/
+
+.generated/
+>>>>>>> origin/draft_GCS

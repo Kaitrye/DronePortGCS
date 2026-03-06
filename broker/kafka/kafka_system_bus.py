@@ -16,7 +16,7 @@ except ImportError:
     KAFKA_AVAILABLE = False
 
 from broker.src.system_bus import SystemBus
-from shared.ports import get_kafka_bootstrap
+from broker.config import get_kafka_bootstrap
 
 
 class KafkaSystemBus(SystemBus):
