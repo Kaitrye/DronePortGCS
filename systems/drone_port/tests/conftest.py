@@ -1,20 +1,19 @@
 """
 Общие фикстуры для всех тестов Droneport.
-Соответствует требованию: выделить конфигурацию в отдельный файл.
 """
-
 import pytest
-from unittest.mock import Mock, MagicMock
-from components.state_store.src.state_store import StateStore
+from unittest.mock import Mock
+from src.state_store.src.state_store import StateStore
 
 
 @pytest.fixture
 def mock_redis():
     """Мок Redis-клиента."""
     mock = Mock()
-    mock.hset.return_value = True
+    mock.hset.return_value = 1
     mock.hgetall.return_value = {}
     mock.keys.return_value = []
+    mock.delete.return_value = 1
     return mock
 
 
@@ -33,4 +32,5 @@ def mock_bus():
     bus.request = Mock(return_value=None)
     bus.respond = Mock()
     bus.publish = Mock()
+    bus.subscribe = Mock()
     return bus
