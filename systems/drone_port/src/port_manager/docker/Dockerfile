@@ -1,10 +1,14 @@
-# systems/droneport/src/port_manager/Dockerfile
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/port_manager/src/ ./src/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-CMD ["python", "-c", "print('port_manager component ready')"]
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "systems.drone_port.src.port_manager"]

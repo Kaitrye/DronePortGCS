@@ -1,0 +1,109 @@
+# Docker Compose для Droneport System.
+# Только сервисы компонентов. Брокер запускается отдельно (docker/docker-compose.yml).
+# Этот файл НЕ используется напрямую — его собирает scripts/prepare_system.py.
+
+services:
+  droneport_orchestrator:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/droneport_orchestrator/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=droneport_orchestrator
+      - SYSTEM_TYPE=drone_port
+      - SYSTEM_ID=${DRONEPORT_SYSTEM_ID:-droneport-001}
+      - BROKER_TYPE=${BROKER_TYPE:-kafka}
+      - BROKER_HOST=${BROKER_HOST:-kafka}
+      - BROKER_PORT=${BROKER_PORT:-29092}
+      - BROKER_USER=${DRONEPORT_USER:-${ADMIN_USER:-admin}}
+      - BROKER_PASSWORD=${DRONEPORT_PASSWORD:-${ADMIN_PASSWORD:-admin123}}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  drone_registry:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/drone_registry/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=drone_registry
+      - SYSTEM_TYPE=drone_port
+      - BROKER_TYPE=${BROKER_TYPE:-kafka}
+      - BROKER_HOST=${BROKER_HOST:-kafka}
+      - BROKER_PORT=${BROKER_PORT:-29092}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  port_manager:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/port_manager/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=port_manager
+      - SYSTEM_TYPE=drone_port
+      - BROKER_TYPE=${BROKER_TYPE:-kafka}
+      - BROKER_HOST=${BROKER_HOST:-kafka}
+      - BROKER_PORT=${BROKER_PORT:-29092}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  power_health_manager:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/power_health_manager/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=power_health_manager
+      - SYSTEM_TYPE=drone_port
+      - BROKER_TYPE=${BROKER_TYPE:-kafka}
+      - BROKER_HOST=${BROKER_HOST:-kafka}
+      - BROKER_PORT=${BROKER_PORT:-29092}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  state_store:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/state_store/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=state_store
+      - SYSTEM_TYPE=drone_port
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+networks:
+  drones_net:
+    external: true
+    name: ${DOCKER_NETWORK:-drones_net}

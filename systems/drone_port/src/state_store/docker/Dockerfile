@@ -1,12 +1,14 @@
-# systems/droneport/src/state_store/Dockerfile
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем только src/ компонента (не весь systems/)
-COPY src/state_store/src/ ./src/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Запуск не требуется — это библиотека, но для совместимости с CI/CD:
-CMD ["python", "-c", "print('state_store component ready')"]
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "systems.drone_port.src.state_store"]

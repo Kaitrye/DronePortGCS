@@ -1,10 +1,14 @@
-# systems/droneport/src/drone_registry/Dockerfile
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/drone_registry/src/ ./src/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-CMD ["python", "-c", "print('drone_registry component ready')"]
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "systems.drone_port.src.drone_registry"]
