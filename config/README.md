@@ -6,4 +6,4 @@
 - **requirements.txt** — зависимости для Docker/CI
 - **pyproject.toml** — метаданные проекта и настройки pytest
 
-Команды `make install`, `make tests` и т.д. используют эти файлы автоматически.
+Команды `make init`, `make tests` и т.д. используют эти файлы автоматически.

@@ -4,9 +4,10 @@ import threading
 import time
 import asyncio
 import os
+from datetime import datetime, timezone
 from typing import Callable, Dict, Any, Optional
 from uuid import uuid4
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 
 try:
     import paho.mqtt.client as mqtt
@@ -47,6 +48,7 @@ class MQTTSystemBus(SystemBus):
         self._reply_topic = f"replies/{self.client_id}"
         self._connected = False
         self._started = False
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mqtt_cb")
 
     def _topic_to_mqtt(self, topic: str) -> str:
         """Топик systems.xxx -> systems/xxx для MQTT."""
@@ -91,15 +93,18 @@ class MQTTSystemBus(SystemBus):
             with self._callbacks_lock:
                 callback = self._callbacks.get(topic)
                 if callback:
-                    try:
-                        callback(message)
-                    except Exception as e:
-                        print(f"Error in callback for {topic}: {e}")
-                        
+                    self._executor.submit(self._safe_callback, topic, callback, message)
+                    return
         except json.JSONDecodeError as e:
             print(f"Error decoding MQTT message: {e}")
         except Exception as e:
             print(f"Error processing MQTT message: {e}")
+
+    def _safe_callback(self, topic: str, callback: Callable, message: Dict[str, Any]):
+        try:
+            callback(message)
+        except Exception as e:
+            print(f"Error in callback for {topic}: {e}")
 
     def start(self) -> None:
         """Подключается к MQTT broker и подписывается на reply-топик."""
@@ -137,11 +142,10 @@ class MQTTSystemBus(SystemBus):
             self._client.loop_stop()
             self._client.disconnect()
             self._client = None
-        
+        self._executor.shutdown(wait=True)
         self._callbacks.clear()
         self._connected = False
         self._started = False
-        
         print("MQTTSystemBus stopped")
 
     def publish(self, topic: str, message: Dict[str, Any]) -> bool:
@@ -155,6 +159,7 @@ class MQTTSystemBus(SystemBus):
         try:
             result = self._client.publish(mqtt_topic, payload, qos=self.qos)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                self._mirror_to_logs("out", topic, message)
                 return True
             else:
                 print(f"Failed to publish to {mqtt_topic}, rc={result.rc}")
