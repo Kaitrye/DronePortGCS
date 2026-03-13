@@ -36,6 +36,7 @@ class MQTTSystemBus(SystemBus):
         self.broker = broker or os.environ.get("MQTT_BROKER", "localhost")
         self.port = port or int(os.environ.get("MQTT_PORT", "1883"))
         self.client_id = f"{client_id}_{uuid4().hex[:8]}"
+        topic_version = (os.environ.get("TOPIC_VERSION", "v1") or "v1").replace("/", ".")
         self.qos = qos
         self.username = username or os.environ.get("BROKER_USER")
         self.password = password or os.environ.get("BROKER_PASSWORD")
@@ -44,7 +45,7 @@ class MQTTSystemBus(SystemBus):
         self._callbacks_lock = threading.Lock()
         self._pending_requests: Dict[str, Future] = {}
         self._pending_lock = threading.Lock()
-        self._reply_topic = f"replies/{self.client_id}"
+        self._reply_topic = f"{topic_version}.replies.{self.client_id}.{uuid4().hex[:8]}"
         self._connected = False
         self._started = False
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mqtt_cb")

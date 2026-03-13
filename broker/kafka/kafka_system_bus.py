@@ -37,6 +37,7 @@ class KafkaSystemBus(SystemBus):
         self.bootstrap_servers = bootstrap_servers or get_kafka_bootstrap()
         self.client_id = client_id
         self.group_id = group_id or f"{client_id}_group"
+        topic_version = (os.environ.get("TOPIC_VERSION", "v1") or "v1").replace("/", ".")
         self.username = username or os.environ.get("BROKER_USER")
         self.password = password or os.environ.get("BROKER_PASSWORD")
         self._producer: Optional[KafkaProducer] = None
@@ -46,7 +47,7 @@ class KafkaSystemBus(SystemBus):
         self._running: Dict[str, bool] = {}
         self._pending_requests: Dict[str, Future] = {}
         self._pending_lock = threading.Lock()
-        self._reply_topic = f"replies.{client_id}.{uuid4().hex[:8]}"
+        self._reply_topic = f"{topic_version}.replies.{client_id}.{uuid4().hex[:8]}"
         self._started = False
 
     def _get_sasl_config(self) -> dict:
@@ -160,7 +161,7 @@ class KafkaSystemBus(SystemBus):
         
         self._callbacks[topic] = callback
         try:
-            is_reply_topic = topic.startswith("replies.")
+            is_reply_topic = ".replies." in topic
             group_suffix = str(uuid4())[:8] if is_reply_topic else "v1"
             
             config = {
