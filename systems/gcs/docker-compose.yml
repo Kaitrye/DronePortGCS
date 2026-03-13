@@ -12,13 +12,15 @@ services:
       - drones_net
     restart: unless-stopped
 
-  redis_component:
+  mission_store:
     build:
       context: ../..
-      dockerfile: systems/gcs/src/redis_component/docker/Dockerfile
+      dockerfile: systems/gcs/src/mission_store/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
+    command: ["python", "-m", "systems.gcs.src.mission_store"]
     environment:
-      - COMPONENT_ID=gcs_redis
+      - COMPONENT_ID=gcs_mission_store
+      - INSTANCE_ID=${INSTANCE_ID:-sys1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
@@ -27,8 +29,8 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_DB=0
-      - HEALTH_PORT=9806
+      - MISSION_STORE_REDIS_DB=0
+      - DRONE_STORE_REDIS_DB=1
       - PYTHONUNBUFFERED=1
     networks:
       - drones_net
@@ -36,99 +38,122 @@ services:
       - redis
     restart: unless-stopped
 
-  mission_component:
+  drone_store:
     build:
       context: ../..
-      dockerfile: systems/gcs/src/mission_component/docker/Dockerfile
+      dockerfile: systems/gcs/src/drone_store/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
+    command: ["python", "-m", "systems.gcs.src.drone_store"]
     environment:
-      - COMPONENT_ID=gcs_mission
+      - COMPONENT_ID=gcs_drone_store
+      - INSTANCE_ID=${INSTANCE_ID:-sys1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - HEALTH_PORT=9800
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MISSION_STORE_REDIS_DB=0
+      - DRONE_STORE_REDIS_DB=1
       - PYTHONUNBUFFERED=1
     networks:
       - drones_net
+    depends_on:
+      - redis
     restart: unless-stopped
 
-  orchestrator_component:
+  mission_converter:
     build:
       context: ../..
-      dockerfile: systems/gcs/src/orchestrator_component/docker/Dockerfile
+      dockerfile: systems/gcs/src/mission_manager/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=gcs_mission_converter
+      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - BROKER_TYPE=${BROKER_TYPE:-kafka}
+      - BROKER_USER=${ADMIN_USER:-admin}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MISSION_STORE_REDIS_DB=0
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: ../..
+      dockerfile: systems/gcs/src/orchestrator/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_orchestrator
+      - INSTANCE_ID=${INSTANCE_ID:-sys1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - HEALTH_PORT=9801
       - PYTHONUNBUFFERED=1
     networks:
       - drones_net
     restart: unless-stopped
 
-  fleet_component:
+  path_planner:
     build:
       context: ../..
-      dockerfile: systems/gcs/src/fleet_component/docker/Dockerfile
+      dockerfile: systems/gcs/src/path_planner/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
-      - COMPONENT_ID=gcs_fleet
+      - COMPONENT_ID=gcs_path_planner
+      - INSTANCE_ID=${INSTANCE_ID:-sys1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - HEALTH_PORT=9802
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MISSION_STORE_REDIS_DB=0
       - PYTHONUNBUFFERED=1
     networks:
       - drones_net
+    depends_on:
+      - redis
     restart: unless-stopped
 
-  robot_component:
+  drone_manager:
     build:
       context: ../..
-      dockerfile: systems/gcs/src/robot_component/docker/Dockerfile
+      dockerfile: systems/gcs/src/drone_manager/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
-      - COMPONENT_ID=gcs_robot
+      - COMPONENT_ID=gcs_drone_manager
+      - INSTANCE_ID=${INSTANCE_ID:-sys1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - HEALTH_PORT=9803
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MISSION_STORE_REDIS_DB=0
+      - DRONE_STORE_REDIS_DB=1
       - PYTHONUNBUFFERED=1
     networks:
       - drones_net
-    restart: unless-stopped
-
-  telemetry_component:
-    build:
-      context: ../..
-      dockerfile: systems/gcs/src/telemetry_component/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
-    environment:
-      - COMPONENT_ID=gcs_telemetry
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - HEALTH_PORT=9804
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
+    depends_on:
+      - redis
     restart: unless-stopped
 
 networks:
