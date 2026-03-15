@@ -17,8 +17,4 @@ pytest-cov = ">=4.1.0"
 flake8 = "*"
 
 [requires]
-<<<<<<< HEAD
-python_version = "3.14"
-=======
-python_version = "3.13"
->>>>>>> origin/draft_GCS
+python_version = "3.12"

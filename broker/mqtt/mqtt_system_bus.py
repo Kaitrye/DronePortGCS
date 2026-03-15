@@ -4,6 +4,7 @@ import threading
 import time
 import asyncio
 import os
+from datetime import datetime, timezone
 from typing import Callable, Dict, Any, Optional
 from uuid import uuid4
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -158,6 +159,7 @@ class MQTTSystemBus(SystemBus):
         try:
             result = self._client.publish(mqtt_topic, payload, qos=self.qos)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                self._mirror_to_logs("out", topic, message)
                 return True
             else:
                 print(f"Failed to publish to {mqtt_topic}, rc={result.rc}")
