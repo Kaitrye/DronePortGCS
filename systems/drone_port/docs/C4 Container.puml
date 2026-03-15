@@ -1,0 +1,63 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml  
+LAYOUT_LEFT_RIGHT()
+
+' === Assurance level styling for elements (3 colors only) ===
+AddElementTag("trusted", $bgColor="#E8F5E9", $fontColor="#1B5E20", $borderColor="#2E7D32", $legendText="Высокая проверенность тестами (>70%)")
+AddElementTag("controlled", $bgColor="#FFF8E1", $fontColor="#E65100", $borderColor="#FB8C00", $legendText="Базовая проверенность тестами")
+AddElementTag("untrusted", $bgColor="#FFEBEE", $fontColor="#B71C1C", $borderColor="#C62828", $legendText="Низкая проверенность/внешняя среда")
+
+' === Relation styling (2 colors only) ===
+AddRelTag("trusted_flow", $textColor="#1B5E20", $lineColor="#2E7D32", $legendText="Поток высокоцелостных данных")
+AddRelTag("external_flow", $textColor="#B71C1C", $lineColor="#C62828", $legendText="Поток низкоцелостных данных")
+
+' === External systems ===
+System_Ext(operator, "Эксплуатант", $tags="untrusted")
+System_Ext(sitl, "SITL", $tags="untrusted")
+System_Ext(drones, "Дроны (БВС)", "Физические воздушные платформы", $tags="untrusted")
+
+
+' === Droneport boundary ===
+System_Boundary(droneport, "Дронопорт") {
+    
+    Container(orchestrator, "DroneportOrchestrator", "Python", "Передача данных между дронопортом и Эксплуатантом.", $tags="controlled")
+    Container(drone_mgr, "DroneManager", "Python", "запросы о самодиагностике + взаимодейтсвие с портами", $tags="controlled")
+    Container(drone_reg, "DroneRegistry", "Python", "Хранилище зарегестрированных дронов", $tags="controlled")
+
+    Container(port_mgr, "PortManager", "Python", "Управление физическими посадочными местами", $tags="trusted")
+    Container(charging_mgr, "ChargingManager", "Python", "Зарядка дронов", $tags="untrusted")
+    Container(state_store, "StateStore", "Python", "Хранилище дронопорта", $tags="controlled")
+}
+
+' === Relations: Operator -> Orchestrator ===
+Rel(operator, orchestrator, "запрос о состоянии", $tags="external_flow")
+Rel(orchestrator, operator, "отчет о состоянии", $tags="external_flow")
+
+'SITL'
+Rel(orchestrator, sitl, "расположение всех дронов", $tags="external_flow")
+
+' === Relations: Orchestrator -> DroneRegistry (Facade) ===
+Rel(orchestrator, drone_reg, "статус дронов", $tags="trusted_flow")
+
+' === Relations: PortManager -> StateStore ===
+Rel(port_mgr, state_store, "проверка свободных слотов", $tags="trusted_flow")
+Rel(port_mgr, state_store, "освобождение площадки для дрона", $tags="trusted_flow")
+
+' === DroneManager: permissions only ===
+Rel(drones, drone_mgr, "запрос разрешения: land/takeoff", $tags="external_flow")
+Rel(drone_mgr, drones, "разрешение: land_at_port_id / takeoff_allowed", $tags="external_flow")
+
+' === Internal component communication (minimal) ===
+Rel(drone_mgr, drone_reg, "удалить дрона при взлёте", $tags="trusted_flow")
+Rel(drone_mgr, port_mgr, "запрос о посадке/взлете", $tags="trusted_flow")
+Rel(drone_mgr, drone_reg, "регистрация нового дрона", $tags="trusted_flow")
+Rel(drone_reg, drone_mgr, "передача данных о зарядке", $tags="trusted_flow")
+Rel(drone_mgr, charging_mgr, "запрос о зарядке дрона", $tags="trusted_flow")
+
+
+Rel(drone_reg, charging_mgr, "получение заряда дрона", $tags="trusted_flow")
+Rel(charging_mgr, drone_reg, "обновление данных о дроне", $tags="external_flow")
+
+
+SHOW_LEGEND()
+@enduml

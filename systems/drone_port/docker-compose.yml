@@ -1,109 +1,161 @@
-# Docker Compose для Droneport System.
-# Только сервисы компонентов. Брокер запускается отдельно (docker/docker-compose.yml).
-# Этот файл НЕ используется напрямую — его собирает scripts/prepare_system.py.
+version: '3.8'
 
 services:
-  droneport_orchestrator:
+  # === Redis (хранилище состояния) ===
+  redis:
+    image: redis:7-alpine
+    container_name: droneport_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - droneport_network
+
+  # === Droneport Orchestrator (маршрутизация) ===
+  orchestrator:
     build:
-      context: ../..
-      dockerfile: systems/drone_port/src/droneport_orchestrator/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
+      context: ./src/droneport_orchestrator
+      dockerfile: docker/Dockerfile
+    container_name: droneport_orchestrator
     environment:
       - COMPONENT_ID=droneport_orchestrator
-      - SYSTEM_TYPE=drone_port
-      - SYSTEM_ID=${DRONEPORT_SYSTEM_ID:-droneport-001}
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_HOST=${BROKER_HOST:-kafka}
-      - BROKER_PORT=${BROKER_PORT:-29092}
-      - BROKER_USER=${DRONEPORT_USER:-${ADMIN_USER:-admin}}
-      - BROKER_PASSWORD=${DRONEPORT_PASSWORD:-${ADMIN_PASSWORD:-admin123}}
+      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
+      - BROKER_HOST=${BROKER_HOST:-localhost}
+      - BROKER_PORT=${BROKER_PORT:-1883}
+      - HEALTH_PORT=8080
+    ports:
+      - "8080:8080"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    networks:
+      - droneport_network
     restart: unless-stopped
 
+  # === DroneManager (команды дронам, SITL) ===
+  drone_manager:
+    build:
+      context: ./src/drone_manager
+      dockerfile: docker/Dockerfile
+    container_name: drone_manager
+    environment:
+      - COMPONENT_ID=drone_manager
+      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BROKER_HOST=${BROKER_HOST:-localhost}
+      - BROKER_PORT=${BROKER_PORT:-1883}
+      - HEALTH_PORT=8081
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - droneport_network
+    restart: unless-stopped
+
+  # === DroneRegistry (Facade, реестр дронов) ===
   drone_registry:
     build:
-      context: ../..
-      dockerfile: systems/drone_port/src/drone_registry/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
+      context: ./src/drone_registry
+      dockerfile: docker/Dockerfile
+    container_name: drone_registry
     environment:
       - COMPONENT_ID=drone_registry
-      - SYSTEM_TYPE=drone_port
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_HOST=${BROKER_HOST:-kafka}
-      - BROKER_PORT=${BROKER_PORT:-29092}
+      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
+      - BROKER_HOST=${BROKER_HOST:-localhost}
+      - BROKER_PORT=${BROKER_PORT:-1883}
+      - HEALTH_PORT=8082
+    ports:
+      - "8082:8082"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    networks:
+      - droneport_network
     restart: unless-stopped
 
+  # === PortManager (посадочные места) ===
   port_manager:
     build:
-      context: ../..
-      dockerfile: systems/drone_port/src/port_manager/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
+      context: ./src/port_manager
+      dockerfile: docker/Dockerfile
+    container_name: port_manager
     environment:
       - COMPONENT_ID=port_manager
-      - SYSTEM_TYPE=drone_port
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_HOST=${BROKER_HOST:-kafka}
-      - BROKER_PORT=${BROKER_PORT:-29092}
+      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
+      - BROKER_HOST=${BROKER_HOST:-localhost}
+      - BROKER_PORT=${BROKER_PORT:-1883}
+      - HEALTH_PORT=8083
+    ports:
+      - "8083:8083"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    networks:
+      - droneport_network
     restart: unless-stopped
 
-  power_health_manager:
+  # === ChargingManager (зарядка) ===
+  charging_manager:
     build:
-      context: ../..
-      dockerfile: systems/drone_port/src/power_health_manager/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
+      context: .
+      dockerfile: src/charging_mananger/docker/Dockerfile
+    container_name: charging_manager
     environment:
-      - COMPONENT_ID=power_health_manager
-      - SYSTEM_TYPE=drone_port
-      - BROKER_TYPE=${BROKER_TYPE:-kafka}
-      - BROKER_HOST=${BROKER_HOST:-kafka}
-      - BROKER_PORT=${BROKER_PORT:-29092}
+      - COMPONENT_ID=charging_manager
+      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
+      - BROKER_HOST=${BROKER_HOST:-localhost}
+      - BROKER_PORT=${BROKER_PORT:-1883}
+      - HEALTH_PORT=8084
+    ports:
+      - "8084:8084"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    networks:
+      - droneport_network
     restart: unless-stopped
+    volumes:
+      - ./src:/app/src
+      - ./shared:/app/shared          # Добавить
+      - ./broker:/app/broker          # Добавить
+      - ./config:/app/config 
 
-  state_store:
-    build:
-      context: ../..
-      dockerfile: systems/drone_port/src/state_store/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
+  # === SITL Simulator (опционально, для тестов) ===
+  sitl:
+    image: ardupilot/sitl:latest
+    container_name: droneport_sitl
     environment:
-      - COMPONENT_ID=state_store
-      - SYSTEM_TYPE=drone_port
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
+      - VEHICLE=ArduCopter
+    ports:
+      - "5760:5760/udp"
+      - "14550:14550/udp"
     networks:
-      - drones_net
-    depends_on:
-      - redis
+      - droneport_network
+    profiles:
+      - simulation
     restart: unless-stopped
 
 networks:
-  drones_net:
-    external: true
-    name: ${DOCKER_NETWORK:-drones_net}
+  droneport_network:
+    driver: bridge
+
+volumes:
+  redis_data:

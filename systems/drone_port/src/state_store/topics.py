@@ -1,9 +1,16 @@
 """
-Топики и действия для компонента StateStore.
-StateStore не взаимодействует напрямую через SystemBus,
-поэтому здесь определены только внутренние константы (если нужны).
+Топики для StateStore.
+StateStore — пассивный компонент, не взаимодействует через SystemBus.
 """
 
-# В данном случае StateStore — пассивный компонент, поэтому actions отсутствуют.
-# Но файл создаётся для единообразия структуры.
-STATE_STORE_ACTIONS = []
+class StateStoreTopics:
+    VERSION = "v1"
+    SYSTEM_TYPE = "droneport"
+    
+    def __init__(self, system_id: str):
+        self.system_id = system_id
+        self.BASE = f"{self.VERSION}.{self.SYSTEM_TYPE}.{self.system_id}.state_store"
+        
+        # Только для аудита
+        self.SAVE_PORT = f"{self.BASE}.save_port"
+        self.GET_PORT = f"{self.BASE}.get_port"
