@@ -7,27 +7,25 @@ from sdk.wpl_generator import (
     expand_two_points_to_path,
 )
 
+def _assert_point_xyz(a, b, tol=1e-9):
+    assert abs(a["lat"] - b["lat"]) <= tol
+    assert abs(a["lon"] - b["lon"]) <= tol
+    assert abs(a["alt"] - b["alt"]) <= tol
 
-def test_expand_two_points_segments_5_produces_6_points():
-    points = [
-        {"lat": 10, "lon": 20, "alt": 50, "param1": 11, "param2": 5, "param3": 33, "param4": 123},
-        {"lat": 20, "lon": 40, "alt": 150, "param1": 44, "param2": 7, "param3": 66, "param4": 456},
-    ]
 
-    path = expand_two_points_to_path(points, segments=5)
-    assert len(path) == 6
+def test_expand_two_points_segments_5_produces_closed_cycle():
+    start = {"lat": 10, "lon": 20, "alt": 50, "param1": 11, "param2": 5, "param3": 33, "param4": 123}
+    end = {"lat": 20, "lon": 40, "alt": 150, "param1": 44, "param2": 7, "param3": 66, "param4": 456}
 
-    assert path[0]["lat"] == 10.0
-    assert path[0]["lon"] == 20.0
-    assert path[0]["alt"] == 50.0
+    path = expand_two_points_to_path([start, end], segments=5)
+    assert len(path) == 11
+    _assert_point_xyz(path[0], {"lat": 10.0, "lon": 20.0, "alt": 50.0})
+    _assert_point_xyz(path[5], {"lat": 20.0, "lon": 40.0, "alt": 150.0})
+    _assert_point_xyz(path[-1], {"lat": 10.0, "lon": 20.0, "alt": 50.0})
+    _assert_point_xyz(path[1], {"lat": 12.0, "lon": 24.0, "alt": 70.0})
 
-    assert path[5]["lat"] == 20.0
-    assert path[5]["lon"] == 40.0
-    assert path[5]["alt"] == 150.0
-
-    assert path[1]["lat"] == 12.0
-    assert path[1]["lon"] == 24.0
-    assert path[1]["alt"] == 70.0  # 50 + 0.2*(150-50)
+    for i in range(len(path)):
+        _assert_point_xyz(path[i], path[-1 - i])
 
 
 def test_expand_two_points_params_policy_start_mid_end():
@@ -35,24 +33,28 @@ def test_expand_two_points_params_policy_start_mid_end():
     end = {"lat": 10, "lon": 10, "alt": 20, "param1": 2, "param2": 7, "param3": 4, "param4": 888}
 
     path = expand_two_points_to_path([start, end], segments=5)
+    assert len(path) == 11
 
-    # start: param1..3 from start, param4 forced to 0
     assert path[0]["param1"] == 1.0
     assert path[0]["param2"] == 5.0
     assert path[0]["param3"] == 3.0
     assert path[0]["param4"] == 0.0
 
-    # middle: param1=0, param2=start.param2, param3=0, param4=0
     assert path[1]["param1"] == 0.0
     assert path[1]["param2"] == 5.0
     assert path[1]["param3"] == 0.0
     assert path[1]["param4"] == 0.0
 
-    # end: param1..3 from end, param4 forced to 0
     assert path[5]["param1"] == 2.0
     assert path[5]["param2"] == 7.0
     assert path[5]["param3"] == 4.0
     assert path[5]["param4"] == 0.0
+
+    _assert_point_xyz(path[-2], path[1])
+    assert path[-2]["param1"] == 0.0
+    assert path[-2]["param2"] == 5.0
+    assert path[-2]["param3"] == 0.0
+    assert path[-2]["param4"] == 0.0
 
 
 def test_expand_requires_exactly_two_points():
@@ -78,7 +80,7 @@ def test_expand_segments_must_be_positive():
 
 
 def test_expand_start_and_end_must_be_different():
-    # lat/lon совпадают -- маршрут нулевой длины 
+   
     start = {"lat": 59.9, "lon": 30.3, "alt": 50, "param1": 0, "param2": 5, "param3": 0, "param4": 0}
     end = {"lat": 59.9, "lon": 30.3, "alt": 100, "param1": 0, "param2": 7, "param3": 0, "param4": 0}
 
@@ -138,8 +140,8 @@ def test_expand_start_or_end_not_dict_raises():
         expand_two_points_to_path([start, 123], segments=5)
 
 
-def test_points_to_wpl_successful_generation_6_points():
-    # уже expanded points (6 штук), проверяем формат WPL
+def test_points_to_wpl_successful_generation_cycle_11_points():
+
     points = [
         {"lat": 1, "lon": 2, "alt": 3, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
         {"lat": 4, "lon": 5, "alt": 6, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
@@ -147,27 +149,29 @@ def test_points_to_wpl_successful_generation_6_points():
         {"lat": 10, "lon": 11, "alt": 12, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
         {"lat": 13, "lon": 14, "alt": 15, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
         {"lat": 16, "lon": 17, "alt": 18, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 13, "lon": 14, "alt": 15, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 10, "lon": 11, "alt": 12, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 7, "lon": 8, "alt": 9, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 4, "lon": 5, "alt": 6, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 1, "lon": 2, "alt": 3, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
     ]
 
     wpl = points_to_wpl(points, frame=3)
     assert wpl.startswith("QGC WPL 110\n")
 
     lines = wpl.strip().splitlines()
-    assert len(lines) == 1 + 6  # header + 6 points
+    assert len(lines) == 1 + 11  
     assert lines[0] == "QGC WPL 110"
 
-    # проверим все строки миссии: в каждой 12 полей
-    for idx in range(1, 7):
+    for idx in range(1, 12):
         fields = lines[idx].split("\t")
         assert len(fields) == 12
 
-    # current только у первой точки
     fields0 = lines[1].split("\t")
     fields1 = lines[2].split("\t")
     assert fields0[1] == "1"
     assert fields1[1] == "0"
 
-    # frame/command/autocontinue
     assert fields0[2] == "3"
     assert fields0[3] == "16"
     assert fields0[11] == "1"
@@ -243,7 +247,7 @@ def test_points_to_wpl_negative_alt_raises():
         points_to_wpl(points, frame=3)
 
 
-def test_json_to_wpl_file_created_and_has_7_lines(tmp_path):
+def test_json_to_wpl_file_created_and_has_expected_lines(tmp_path):
     input_file = tmp_path / "input.json"
     output_file = tmp_path / "output.wpl"
 
@@ -262,8 +266,7 @@ def test_json_to_wpl_file_created_and_has_7_lines(tmp_path):
     assert content.startswith("QGC WPL 110\n")
 
     lines = content.strip().splitlines()
-    assert len(lines) == 1 + 6  # header + 6 points
-
+    assert len(lines) == 1 + 11
     fields0 = lines[1].split("\t")
     assert fields0[2] == "3"
     assert fields0[3] == "16"
@@ -282,17 +285,11 @@ def test_json_to_wpl_interpolates_20_percent_point(tmp_path):
     json_to_wpl(str(input_file), str(output_file), frame=3, segments=5)
 
     lines = output_file.read_text(encoding="utf-8").strip().splitlines()
-
-    # строка 0 header
-    # строка 1 index=0 (start)
-    # строка 2 index=1 (t=0.2)
     fields = lines[2].split("\t")
 
-    assert fields[8] == "12.0"   # lat
-    assert fields[9] == "24.0"   # lon
-    assert fields[10] == "70.0"  # alt
-
-    # param4 должен быть 0 на промежуточных
+    assert fields[8] == "12.0"
+    assert fields[9] == "24.0"
+    assert fields[10] == "70.0"
     assert fields[7] == "0.0"
 
 
