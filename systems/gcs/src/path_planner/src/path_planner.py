@@ -25,45 +25,6 @@ class PathPlannerComponent(BaseComponent):
     def _register_handlers(self):
         self.register_handler(PathPlannerActions.PATH_PLAN, self._handle_path_plan)
 
-    def send_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        timeout: float = 10.0,
-        correlation_id: Optional[str] = None,
-    ) -> Optional[dict]:
-        request_message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            request_message["correlation_id"] = correlation_id
-
-        return self.bus.request(
-            target_topic,
-            request_message,
-            timeout=timeout,
-        )
-
-    def publish_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        correlation_id: Optional[str] = None,
-    ) -> None:
-        message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            message["correlation_id"] = correlation_id
-
-        self.bus.publish(target_topic, message)
-
     @staticmethod
     def _normalize_point(raw_point: Any) -> Optional[Dict[str, float]]:
         if not isinstance(raw_point, dict):

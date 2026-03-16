@@ -20,7 +20,7 @@ services:
     command: ["python", "-m", "systems.gcs.src.mission_store"]
     environment:
       - COMPONENT_ID=gcs_mission_store
-      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
@@ -46,7 +46,7 @@ services:
     command: ["python", "-m", "systems.gcs.src.drone_store"]
     environment:
       - COMPONENT_ID=gcs_drone_store
-      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
@@ -67,11 +67,11 @@ services:
   mission_converter:
     build:
       context: ../..
-      dockerfile: systems/gcs/src/mission_manager/docker/Dockerfile
+      dockerfile: systems/gcs/src/mission_converter/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_mission_converter
-      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
@@ -95,7 +95,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_orchestrator
-      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
@@ -114,7 +114,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_path_planner
-      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
@@ -138,7 +138,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_drone_manager
-      - INSTANCE_ID=${INSTANCE_ID:-sys1}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}

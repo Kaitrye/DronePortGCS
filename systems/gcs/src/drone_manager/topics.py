@@ -13,10 +13,3 @@ class DroneManagerActions:
     MISSION_UPLOAD = "mission.upload"
     MISSION_START = "mission.start"
     TELEMETRY_SAVE = "telemetry.save"
-
-class DroneStoreActions:
-    UPDATE_DRONE = "store.update_drone"
-    SAVE_TELEMETRY = "telemetry.save"
-
-class ExternalTopics:
-    DRONE = "drone"
