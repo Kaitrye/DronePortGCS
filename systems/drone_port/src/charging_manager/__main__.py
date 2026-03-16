@@ -1,12 +1,41 @@
-import sys
+"""Точка входа для ChargingManager."""
 import os
+import sys
+import time
 
-# Добавляем корень проекта в путь
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, root_dir)
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
+sys.path.insert(0, ROOT_DIR)
+
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.charging_manager.src.charging_manager import ChargingManager
 
 
-from src.charging_manager.src.charging_manager import main
+def main():
+    component_id = os.getenv("COMPONENT_ID", "charging_manager")
+    broker_host = os.getenv("BROKER_HOST", "mqtt")
+    broker_port = int(os.getenv("BROKER_PORT", 1883))
+
+    bus = MQTTSystemBus(
+        broker=broker_host,
+        port=broker_port,
+        client_id=component_id
+    )
+    bus.start()
+
+    manager = ChargingManager(
+        component_id=component_id,
+        name=component_id,
+        bus=bus,
+    )
+    
+    manager.start()
+    
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        manager.stop()
+
 
 if __name__ == "__main__":
     main()

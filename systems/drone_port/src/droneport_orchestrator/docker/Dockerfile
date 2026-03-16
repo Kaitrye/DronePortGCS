@@ -2,15 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Копируем ВСЕ компоненты (оркестратор зависит от них)
-COPY src/ /app/src/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Копируем shared компоненты (если есть)
-COPY shared/ /app/shared/ 2>/dev/null || true
-COPY broker/ /app/broker/ 2>/dev/null || true
+COPY ../../../../../config/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Устанавливаем PYTHONPATH
+COPY . .
+
 ENV PYTHONPATH=/app
+ENV COMPONENT_ID=droneport_orchestrator
 
-# Точка входа — оркестратор
 CMD ["python", "-m", "systems.drone_port.src.droneport_orchestrator"]

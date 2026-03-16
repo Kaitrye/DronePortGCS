@@ -2,17 +2,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Копируем ВСЕ компоненты (оркестратор зависит от них)
-COPY src/ /app/src/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update
+COPY ../../../../../config/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Устанавливаем PYTHONPATH
-ENV COMPONENT_ID=drone_manager
 ENV PYTHONPATH=/app
+ENV COMPONENT_ID=drone_manager
 
 EXPOSE 8081
 
-CMD ["python", "-m", "src.drone_manager"]
+CMD ["python", "-m", "systems.drone_port.src.drone_manager"]

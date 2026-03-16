@@ -1,41 +1,39 @@
 """
-DroneportOrchestrator — ТОЛЬКО маршрутизация к DroneRegistry (Facade).
-НЕ знает о других компонентах напрямую.
+DroneportOrchestrator — система, оркестрирующая компоненты.
 """
 import datetime
 from typing import Dict, Any, Optional
-from shared.base_system import BaseSystem
-from broker.system_bus import SystemBus
-from src.droneport_orchestrator.topics import DroneportOrchestratorTopics
-from src.drone_registry.topics import DroneRegistryTopics
+from sdk.base_component import BaseComponent
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.droneport_orchestrator.topics import DroneportOrchestratorTopics
+from systems.drone_port.src.drone_registry.topics import DroneRegistryTopics
+from systems.drone_port.src.charging_manager.topics import ChargingManagerTopics
 
-class DroneportOrchestrator(BaseSystem):
+
+class DroneportOrchestrator(BaseComponent):
     def __init__(
         self,
-        system_id: str,
+        component_id: str,
         name: str,
-        bus: SystemBus,
-        health_port: Optional[int] = None,
+        bus: MQTTSystemBus,
     ):
-        self.topics = DroneportOrchestratorTopics(system_id)
-        self.registry_topics = DroneRegistryTopics(system_id)
+        self.topics = DroneportOrchestratorTopics(component_id)
+        self.registry_topics = DroneRegistryTopics(component_id)
+        self.charging_topics = ChargingManagerTopics(component_id)
         
         super().__init__(
-            system_id=system_id,
-            system_type="droneport",
-            topic=self.topics.BASE,
+            component_id=component_id,
+            component_type="droneport",
+            topic=self.topics.base_topic, 
             bus=bus,
-            health_port=health_port,
         )
         self.name = name
         print(f"DroneportOrchestrator '{name}' initialized (routing only)")
-        
-        self._register_handlers()
 
     def _register_handlers(self) -> None:
-        """Регистрация ТОЛЬКО команд от Эксплуатанта"""
-        self.register_handler(self.topics.FLEET_REPORT, self._handle_fleet_report)
-        self.register_handler(self.topics.HEALTH_CHECK, self._handle_health_check)
+        """Регистрация ТОЛЬКО команд от Эксплуатанта (по action, не по топику!)."""
+        self.register_handler("fleet_report", self._handle_fleet_report)
+        self.register_handler("health_check", self._handle_health_check)
 
     def _handle_fleet_report(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Запрос агрегированных данных о флоте через DroneRegistry (Facade)."""
@@ -56,7 +54,7 @@ class DroneportOrchestrator(BaseSystem):
         
         return {
             "status": "report_generated",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.utcnow().isoformat(),
             "payload": response.get("payload", {})
         }
 
@@ -64,15 +62,30 @@ class DroneportOrchestrator(BaseSystem):
         return {
             "status": "health.ok",
             "timestamp": message.get("timestamp"),
-            "system_id": self.system_id
+            "component_id": self.component_id
         }
+
+    def start_charging(self, drone_id: str) -> None:
+        """
+        ✅ Publish-only: запуск зарядки дрона (без ответа).
+        Отправляет команду в ChargingManager напрямую.
+        """
+        self.bus.publish(
+            self.charging_topics.START_CHARGING,
+            {
+                "action": "start_charging",
+                "payload": {"drone_id": drone_id},
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
+        )
+        print(f"[{self.component_id}] Published START_CHARGING for drone: {drone_id}")
 
     def publish_sitl_positions(self, positions: Dict[str, Any]) -> None:
         """Публикация позиций дронов в SITL"""
         self.bus.publish(
             self.topics.SITL_POSITIONS,
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.datetime.utcnow().isoformat(),
                 "payload": positions
             }
         )

@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+COPY ../../../../../config/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
@@ -14,4 +16,4 @@ ENV COMPONENT_ID=charging_manager
 
 EXPOSE 8084
 
-CMD ["python", "-m", "src.charging_manager"]
+CMD ["python", "-m", "systems.drone_port.src.charging_manager"]

@@ -1,18 +1,41 @@
-"""Точка входа для запуска через python -m src.drone_manager"""
+"""Точка входа для DroneManager."""
 import os
-from src.drone_manager.src.drone_manager import DroneManager
-from broker.system_bus import SystemBus
+import sys
+import time
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
+sys.path.insert(0, ROOT_DIR)
+
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.drone_manager.src.drone_manager import DroneManager
+
 
 def main():
-    system_id = os.getenv("SYSTEM_ID", "dp-001")
-    bus = SystemBus(client_id=system_id)
-    
-    manager = DroneManager(
-        system_id=system_id,
-        name="DroneManager",
-        bus=bus
+    component_id = os.getenv("COMPONENT_ID", "drone_manager")
+    broker_host = os.getenv("BROKER_HOST", "mqtt")
+    broker_port = int(os.getenv("BROKER_PORT", 1883))
+
+    bus = MQTTSystemBus(
+        broker=broker_host,
+        port=broker_port,
+        client_id=component_id
     )
+    bus.start()
+
+    manager = DroneManager(
+        component_id=component_id,
+        name=component_id,
+        bus=bus,
+    )
+    
     manager.start()
+    
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        manager.stop()
+
 
 if __name__ == "__main__":
     main()

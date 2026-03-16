@@ -1,286 +1,335 @@
-# 🚁 Система Дронопорт
+# 🚁 DronePort: Описание архитектуры компонентов
 
-Представьте, что **Дронопорт** — это как **автоматизированный аэропорт для дронов**. У него есть посадочные площадки, зарядные станции, диспетчерская и база данных. Давайте разберём каждый компонент по порядку.
+## 📋 Оглавление
 
----
-
-## 📊 Общая архитектура системы
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     ЭКСПЛУАТАНТ                                 │
-│              (оператор, который управлет дронами)               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      SYSTEM BUS (Kafka/MQTT)                    │
-│              (шина сообщений — "нервная система")               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      DRONEPORT ORCHESTRATOR                     │
-│              (главный диспетчер — маршрутизирует команды)       │
-└─────────────────────────────────────────────────────────────────┘
-         │              │              │              │
-         ▼              ▼              ▼              ▼
-┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│   PORT      │ │   POWER     │ │   DRONE     │ │   STATE     │
-│  MANAGER    │ │  HEALTH     │ │  REGISTRY   │ │   STORE     │
-│             │ │  MANAGER    │ │             │ │             │
-│ Посадочные  │ │ Зарядка +   │ │ Реестр      │ │ База данных │
-│ площадки    │ │ Диагностика │ │ дронов      │ │ (Redis)     │
-└─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
-```
+1. [Что такое DronePort?](#-что-такое-droneport)
+2. [Архитектура в одном слайде](#-архитектура-в-одном-слайде)
+3. [Компоненты системы](#-компоненты-системы)
+4. [Как компоненты общаются](#-как-компоненты-общаются)
+5. [Поток данных: пример сценария](#-поток-данных-пример-сценария)
+6. [Ключевые концепции](#-ключевые-концепции)
+7. [Быстрый старт](#-быстрый-старт)
 
 ---
 
-## 1️⃣ DroneportOrchestrator (Главный диспетчер)
+## 🔍 Что такое DronePort?
 
-**📍 Расположение:** `src/droneport_orchestrator/src/orchestrator.py`
+**DronePort** — это система управления дронопортом (вертодронной площадкой), которая:
 
-### Что делает?
-Это **мозг системы**. Он не выполняет работу сам, но координирует все остальные компоненты. 
-- Принимает запросы от операторов и дронов
-- Решает, какой компонент должен обработать запрос
-- Возвращает ответы обратно
+| Функция | Описание |
+|---------|----------|
+| 🛬 **Посадка** | Координация посадки дронов на свободные площадки |
+| 🛫 **Взлёт** | Проверка готовности и разрешение на вылет |
+| 🔋 **Зарядка** | Управление процессом зарядки аккумуляторов |
+| 📊 **Мониторинг** | Агрегация статуса всех дронов для оператора |
+| 🧪 **SITL** | Интеграция с симулятором для тестирования |
 
-### Основные функции:
+**Главный принцип**: каждый компонент делает **одну задачу** и общается с другими **только через брокер сообщений** (MQTT).
 
-| Функция | Что делает | Пример |
-|---------|------------|--------|
-| `_handle_request_landing_slot()` | Обрабатывает запрос дрона на посадку | Дрон: "Можно сесть?" → Оркестратор: "Да, на площадку P-01" |
-| `_handle_reserve_slots()` | Резервирует площадки для группы дронов | Оператор: "Забронируй 3 места на завтра" |
-| `_handle_dock()` | Запускает процесс посадки | Дрон сел → Запуск диагностики → Начало зарядки |
-| `_handle_release_for_takeoff()` | Разрешает взлёт | Дрон: "Готов взлететь" → Оркестратор: "Взлёт разрешён" |
-| `_handle_charge_to_threshold()` | Управляет зарядкой до нужного уровня | Оператор: "Заряди до 90% к 15:00" |
-| `_handle_preflight_check()` | Предполётная проверка | Проверка батареи, статуса перед вылетом |
-| `_handle_operator_report_request()` | Генерирует отчёт для оператора | "Сколько дронов сейчас в порту? Какие проблемы?" |
-| `_handle_health_check()` | Проверка здоровья системы | Мониторинг работоспособности компонентов |
+---
 
-### Как работает?
+## 🏗 Архитектура в одном слайде
+
+```
+┌─────────────────────────────────────────────┐
+│              ЭКСПЛУАТАНТ                     │
+│         (оператор / внешняя система)         │
+└────────────────┬────────────────────────────┘
+                 │ запросы: fleet_report, health_check
+                 ▼
+┌─────────────────────────────────────────────┐
+│         DRONEPORT ORCHESTRATOR              │
+│  • Единственная точка входа от оператора    │
+│  • НЕ знает о других компонентах напрямую   │
+│  • Маршрутизирует запросы → DroneRegistry   │
+└────────────────┬────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────┐
+│            DRONE REGISTRY ⭐                │
+│              (Facade-паттерн)               │
+│  • Знает о ВСЕХ компонентах дронопорта     │
+│  • Агрегирует данные из:                    │
+│    - PortManager (слоты)                    │
+│    - ChargingManager (зарядка)              │
+│    - DroneManager (статус дронов)           │
+│  • Хранит состояние в StateStore (Redis)    │
+└───────┬────────────┬────────────┬───────────┘
+        │            │            │
+        ▼            ▼            ▼
+┌───────────┐ ┌───────────┐ ┌───────────┐
+│PortManager│ │ChargingMgr│ │DroneManager│
+│• слоты    │ │• зарядка  │ │• дроны    │
+│• посадка  │ │• батарея  │ │• телеметрия│
+│• взлёт    │ │• мощность │ │• SITL     │
+└─────┬─────┘ └─────┬─────┘ └─────┬─────┘
+      │             │             │
+      └──────┬──────┴──────┬──────┘
+             ▼             ▼
+    ┌─────────────────────────┐
+    │      STATE STORE        │
+    │   (Redis, пассивный)    │
+    │ • drone:{id} → данные  │
+    │ • port:{id} → статус   │
+    └─────────────────────────┘
+```
+
+> ⭐ **DroneRegistry — это Facade**: Orchestrator общается **только** с ним, не зная о внутренней структуре дронопорта.
+
+---
+
+## 🧩 Компоненты системы
+
+### 1️⃣ DroneportOrchestrator
+| Параметр | Значение |
+|----------|----------|
+| **Роль** | Маршрутизатор запросов от Эксплуатанта |
+| **Вход** | `fleet_report`, `health_check` |
+| **Выход** | Запросы к `DroneRegistry`, публикация в SITL |
+| **Знает о** | Только DroneRegistry |
+| **Не знает о** | PortManager, ChargingManager, DroneManager |
+
 ```python
-# 1. Получает сообщение из шины
-message = bus.receive("v1.droneport.dp-001.orchestrator.request_landing_slot")
-
-# 2. Определяет, какой компонент обработать
-result = self.port_manager.request_landing_slot(drone_id)
-
-# 3. Возвращает ответ
-bus.publish(reply_topic, result)
+# Пример: обработка запроса отчёта
+def _handle_fleet_report(self, message):
+    # Запрашивает агрегированные данные у Facade
+    response = self.bus.request(
+        registry_topics.GET_AGGREGATED_FLEET_STATUS,
+        {"request_id": message["request_id"]}
+    )
+    return {"payload": response["payload"]}
 ```
 
 ---
 
-## 2️⃣ PortManager (Управление посадочными площадками)
+### 2️⃣ DroneRegistry ⭐ (Facade)
+| Параметр | Значение |
+|----------|----------|
+| **Роль** | Единый интерфейс ко всем данным дронопорта |
+| **Вход** | `get_aggregated_status`, `register_drone`, `list_drones`, ... |
+| **Выход** | Запросы к другим компонентам, события в брокер |
+| **Знает о** | PortManager, ChargingManager, DroneManager, StateStore |
+| **Хранит** | Ссылки на StateStore (Redis) |
 
-**📍 Расположение:** `src/port_manager/src/port_manager.py`
-
-### Что делает?
-Управляет **физическими посадочными местами**. 
-- Знает, какие места свободны
-- Проверяет, подходит ли дрон для конкретного места
-- Резервирует и освобождает места
-
-### Основные функции:
-
-| Функция | Что делает | Пример |
-|---------|------------|--------|
-| `request_landing_slot()` | Находит свободное место для дрона | "Дрон D-001 → Площадка P-01" |
-| `reserve_slot()` | Резервирует конкретное место | "Забронируй P-01 для D-001 на 2 часа" |
-| `release_for_takeoff()` | Освобождает место после взлёта | "D-001 улетел → P-01 свободно" |
-| `_validate_drone_compatibility()` | Проверяет совместимость дрона с портом | "Этот дрон слишком тяжёлый для P-01" |
-| `_generate_landing_corridor()` | Генерирует параметры коридора посадки | "Входная точка: P-01-ENTRY, высота: 50м" |
-
----
-
-## 3️⃣ PowerHealthManager (Зарядка и диагностика)
-
-**📍 Расположение:** `src/power_health_manager/src/power_health_manager.py`
-
-### Что делает?
-Отвечает за **энергетику и здоровье дронов**. 
-- Заряжает батареи
-- Проверяет техническое состояние после посадки
-- Выявляет неисправности
-
-### Основные функции:
-
-| Функция | Что делает | Пример |
-|---------|------------|--------|
-| `charge_to_threshold()` | Заряжает батарею до заданного уровня | "Заряди с 50% до 90% за 1 час" |
-| `run_post_landing_diagnostics()` | Диагностика после посадки | Проверка моторов, GPS, температуры |
-| `auto_start_charging_if_needed()` | Автоматически начинает зарядку | "Батарея < 80% → начать зарядку" |
-| `query_drone_self_diagnostics()` | Опрашивает системы дрона | "Какой статус моторов? Температура?" |
-
-### Процесс диагностики:
 ```python
-# 1. Проверяем батарею
-if battery_level < 10%:
-    issues.append("battery_critical")
-
-# 2. Опрашиваем дрон (через MAVLink)
-remote_health = query_drone_self_diagnostics(drone_id)
-if remote_health.motors != "ok":
-    issues.append("motor_fault_detected")
-if remote_health.temperature > 80°C:
-    issues.append("overheating")
-
-# 3. Возвращаем результат
-if issues:
-    return {"status": "diagnostics.failed", "issues": issues}
-else:
-    return {"status": "diagnostics.ok"}
+# Пример: агрегация статуса флота
+def _handle_get_aggregated_status(self, message):
+    drones = self.state.list_drones()           # из Redis
+    ports = self.bus.request(port_topics.GET_PORT_STATUS)   # из PortManager
+    charging = self.bus.request(charging_topics.GET_CHARGING_STATUS)  # из ChargingManager
+    
+    return {
+        "fleet": {"total": len(drones), "charging": ..., "ready": ...},
+        "ports": {"occupied": ..., "free": ...},
+        "alerts": [...]
+    }
 ```
 
 ---
 
-## 4️⃣ DroneRegistry (Реестр дронов)
+### 3️⃣ DroneManager
+| Параметр | Значение |
+|----------|----------|
+| **Роль** | Взаимодействие с физическими дронами (БВС) |
+| **Вход** | `request_landing`, `request_takeoff`, `self_diagnostics` |
+| **Выход** | `landing_allowed`, `takeoff_allowed`, события в Registry |
+| **Знает о** | PortManager (через Broker), DroneRegistry (через Broker) |
+| **Локально** | Кэш позиций дронов для SITL |
 
-**📍 Расположение:** `src/drone_registry/src/drone_registry.py`
-
-### Что делает?
-Ведёт **учёт всех дронов** в системе.
-- Знает, какие дроны зарегистрированы
-- Хранит их характеристики
-- Рассчитывает уровень безопасности (`safety_target`)
-
-### Основные функции:
-
-| Функция | Что делает | Пример |
-|---------|------------|--------|
-| `register_drone()` | Регистрирует новый дрон | "Дрон D-001, тип: agricultural, батарея: 50%" |
-| `get_drone()` | Получает данные о дроне | "Какой статус у D-001?" |
-| `list_all_drones()` | Возвращает список всех дронов | "Покажи всех дронов в порту" |
-| `run_post_landing_diagnostics()` | Диагностика на основе реестра | "Есть ли проблемы у этого дрона?" |
-
-### Расчёт `safety_target` (уровень безопасности):
 ```python
-if battery_level < 20%:
-    safety_target = "low_battery_alert"
-    issues = ["battery_critical"]
-else:
-    safety_target = "normal_operation"
-    issues = []
+# Пример: обработка запроса на посадку
+def _handle_request_landing(self, message):
+    drone_id = message["payload"]["drone_id"]
+    
+    # Запрашивает слот у PortManager
+    response = self.bus.request(port_topics.REQUEST_LANDING_SLOT, ...)
+    
+    if response["status"] == "slot_assigned":
+        # Публикует разрешение дрону
+        self.bus.publish(topics.LANDING_ALLOWED, {"port_id": response["port_id"]})
+        return {"status": "landing_allowed"}
 ```
 
 ---
 
-## 5️⃣ StateStore (Хранилище состояния)
+### 4️⃣ PortManager
+| Параметр | Значение |
+|----------|----------|
+| **Роль** | Управление посадочными площадками (слотами) |
+| **Вход** | `reserve_slot`, `release_slot`, `request_landing_slot` |
+| **Выход** | `slot_assigned`, `slot_released` |
+| **Знает о** | StateStore (прямой доступ) |
+| **Логика** | Проверка занятости, генерация коридора посадки |
 
-**📍 Расположение:** `src/state_store/src/state_store.py`
-
-### Что делает?
-Это **база данных** системы (работает с Redis).
-- Хранит состояние всех дронов
-- Хранит статус всех площадок
-- Предоставляет данные для отчётов
-
-### Основные функции:
-
-| Функция | Что делает | Пример ключа в Redis |
-|---------|------------|---------------------|
-| `save_drone()` | Сохраняет данные дрона | `drone:D-001` |
-| `get_drone()` | Получает данные дрона | `drone:D-001` |
-| `delete_drone()` | Удаляет дрона из хранилища | `drone:D-001` |
-| `save_port()` | Сохраняет статус площадки | `port:P-01` |
-| `get_port()` | Получает статус площадки | `port:P-01` |
-| `register_drone_meta()` | Сохраняет спецификации дрона | `drone_meta:D-001` |
-| `get_aggregated_fleet_status()` | Агрегирует данные для отчёта | — |
-
-### Структура данных в Redis:
+```python
+# Пример: поиск свободного слота
+def _handle_request_landing_slot(self, message):
+    for port_id in ["P-01", "P-02", "P-03", "P-04"]:
+        if not self.state.is_port_occupied(port_id):
+            return {
+                "status": "slot_assigned",
+                "port_id": port_id,
+                "corridor": self._generate_landing_corridor(port_id)
+            }
+    return {"status": "denied", "reason": "No available slots"}
 ```
-drone:D-001 → {
-    "drone_id": "D-001",
-    "battery_level": "45.0",
-    "status": "charging",
-    "port_id": "P-01",
-    "issues": ""
+
+---
+
+### 5️⃣ ChargingManager
+| Параметр | Значение |
+|----------|----------|
+| **Роль** | Управление процессом зарядки дронов |
+| **Вход** | `start_charging` (publish-only!), `stop_charging`, `charge_to_threshold` |
+| **Выход** | `charging_started`, `charging_completed` (события) |
+| **Знает о** | DroneRegistry (через Broker), StateStore (опционально) |
+| **Особенность** | `start_charging` — **fire-and-forget**, без ответа |
+
+```python
+# Пример: publish-only команда
+def _handle_start_charging(self, message):
+    drone_id = message["payload"]["drone_id"]
+    # Обновляет статус (через Registry или локально)
+    self.bus.publish(
+        topics.CHARGING_STARTED,
+        {"drone_id": drone_id}
+    )
+    # ❌ Не возвращает ответ!
+```
+
+---
+
+### 6️⃣ StateStore (пассивный)
+| Параметр | Значение |
+|----------|----------|
+| **Роль** | Абстракция над Redis для хранения состояния |
+| **Не наследуется** | От BaseComponent — не подключается к брокеру |
+| **Методы** | `save_drone()`, `get_drone()`, `list_drones()`, `save_port()`, ... |
+| **Используют** | DroneRegistry, PortManager, (опционально) ChargingManager |
+
+```python
+# Пример: сохранение дрона
+def save_drone(self, drone_id: str, data: Dict[str, Any]) -> bool:
+    key = f"drone:{drone_id}"
+    return self.redis.hset(key, mapping=data) > 0
+```
+
+---
+
+## 📡 Как компоненты общаются
+
+### Типы взаимодействия
+
+| Тип | Описание | Пример |
+|-----|----------|--------|
+| **Request/Response** | Запрос → ожидание ответа → обработка | Orchestrator → Registry: `get_aggregated_status` |
+| **Publish-only** | Отправил и забыл (без ответа) | Orchestrator → ChargingManager: `start_charging` |
+| **Event** | Публикация события для подписчиков | ChargingManager → все: `charging_started` |
+
+### Формат сообщения
+
+```json
+{
+  "action": "имя_действия",
+  "payload": { ... },
+  "correlation_id": "uuid-для-ответа",  // опционально, для request
+  "reply_to": "топик_для_ответа"         // опционально, для request
 }
+```
 
-port:P-01 → {
-    "port_id": "P-01",
-    "drone_id": "D-001",
-    "status": "occupied",
-    "maintenance_mode": "false"
-}
+### Топики (именование)
 
-drone_meta:D-001 → {
-    "drone_type": "agricultural",
-    "protocol": "MAVLink",
-    "max_load_kg": "50"
-}
+```
+v1.droneport.{system_id}.{component}.{action}
+```
+
+Примеры:
+- `v1.droneport.dp-001.orchestrator.fleet_report` — запрос отчёта
+- `v1.droneport.dp-001.registry.get_aggregated_status` — Facade-запрос
+- `v1.droneport.dp-001.charging_manager.events.charging_started` — событие
+
+---
+
+## 🔄 Поток данных: пример сценария
+
+### 🛬 Посадка дрона
+
+```
+1. Дрон → DroneManager: request_landing {drone_id: "D-001"}
+2. DroneManager → PortManager: request_landing_slot {drone_id: "D-001"}
+3. PortManager → StateStore: проверка занятости слотов
+4. PortManager → DroneManager: slot_assigned {port_id: "P-02"}
+5. DroneManager → DroneRegistry: register_drone {drone_id: "D-001", port_id: "P-02"}
+6. DroneManager → Дрон: landing_allowed {port_id: "P-02", corridor: {...}}
+7. DroneRegistry → StateStore: сохранение статуса дрона
+```
+
+### 🔋 Запуск зарядки (publish-only)
+
+```
+1. Эксплуатант → Orchestrator: fleet_report
+2. Orchestrator → DroneRegistry: get_aggregated_status
+3. DroneRegistry → ChargingManager: get_charging_status
+4. ChargingManager → StateStore: чтение статусов
+5. ChargingManager → DroneRegistry: ответ со списком заряжающихся
+6. ... (агрегация и возврат отчёта)
+
+7. Параллельно: Эксплуатант → Orchestrator: start_charging {drone_id: "D-001"}
+8. Orchestrator → ChargingManager: publish start_charging (без ожидания ответа!)
+9. ChargingManager → StateStore: обновление статуса дрона
+10. ChargingManager → все: событие charging_started
 ```
 
 ---
 
-## 🔄 Как компоненты работают вместе (Пример: Посадка дрона)
+## 🎯 Ключевые концепции
 
-```
-┌──────────┐     ┌──────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Дрон   │────▶│ Orchestrator │────▶│ PortManager │────▶│ StateStore  │
-│          │     │              │     │             │     │             │
-│ "Хочу    │     │ "Найди место │     │ "P-01       │     │ "Проверь    │
-│  сесть"  │     │  для D-001"  │     │  свободно"  │     │  занятость" │
-└──────────┘     └──────────────┘     └─────────────┘     └─────────────┘
-                                              │
-                                              ▼
-┌──────────┐     ┌──────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Дрон   │◀────│ Orchestrator │◀────│PowerHealth  │◀────│ StateStore  │
-│          │     │              │     │  Manager    │     │             │
-│ "Сел на  │     │ "Запусти     │     │ "Проверь    │     │ "Данные о   │
-│  P-01"   │     │  диагностику"│     │  батарею"   │     │  дроне"     │
-└──────────┘     └──────────────┘     └─────────────┘     └─────────────┘
-```
+### ✅ Facade-паттерн (DroneRegistry)
+- Orchestrator **не знает** о внутренней структуре дронопорта
+- Все запросы к данным идут **только** через DroneRegistry
+- Упрощает тестирование и замену компонентов
 
-### Пошаговый процесс:
+### ✅ Publish-only команды
+- Некоторые действия (например, `start_charging`) не требуют подтверждения
+- Уменьшает задержки и упрощает протокол
+- Ответственность за обработку ошибок — на стороне получателя
 
-| Шаг | Компонент | Действие |
-|-----|-----------|----------|
-| 1 | **Дрон** | Отправляет телеметрию: `battery=15%, status=low_battery` |
-| 2 | **Orchestrator** | Получает запрос `REQUEST_LANDING_SLOT` |
-| 3 | **PortManager** | Ищет свободное место, проверяет совместимость |
-| 4 | **StateStore** | Возвращает статус портов и мета-данные дрона |
-| 5 | **Orchestrator** | Публикует ответ: `LANDING_SLOT_ASSIGNED, port=P-01` |
-| 6 | **Дрон** | Выполняет посадку, отправляет `DOCK` |
-| 7 | **PowerHealthManager** | Запускает диагностику, проверяет батарею |
-| 8 | **PowerHealthManager** | Если батарея < 80% → начинает зарядку |
-| 9 | **StateStore** | Сохраняет обновлённое состояние дрона |
-| 10 | **Orchestrator** | Публикует событие `CHARGING_STARTED` |
+### ✅ Пассивный StateStore
+- Не подключается к брокеру, не имеет handlers
+- Прямой доступ к Redis через методы
+- Используется только компонентами, которым нужно хранить состояние
+
+### ✅ Изоляция компонентов
+- Каждый компонент знает **минимум** о других
+- Взаимодействие — только через Broker (MQTT)
+- Легко заменять/масштабировать отдельные части
 
 ---
 
-## 📡 Система топиков (версионирование)
+## 🚀 Быстрый старт
 
-Все компоненты общаются через **SystemBus** (Kafka/MQTT). Топики имеют структуру:
+### 1. Запуск через Docker
 
+```bash
+# Из корня репозитория
+cd DronePortGCS
+
+# Запуск всех компонентов дронопорта
+docker-compose -f systems/drone_port/docker-compose.yml up --build
+
+# Или только отдельные компоненты
+docker-compose -f systems/drone_port/docker-compose.yml up --build redis mqtt charging_manager
 ```
-<version>.<system_type>.<system_id>.<component>.<action>
+
+### 2. Проверка работы
+
+```bash
+# Логи компонента
+docker-compose -f systems/drone_port/docker-compose.yml logs -f charging_manager
+
+# Подписка на топики через MQTT
+docker exec -it <mqtt_container> mosquitto_sub -v -t "v1.droneport.dp-001.#"
+
+# Проверка Redis
+docker exec -it <redis_container> redis-cli KEYS "drone:*"
 ```
-
-### Примеры топиков:
-
-| Топик | Кто публикует | Кто подписывается |
-|-------|---------------|-------------------|
-| `v1.droneport.dp-001.orchestrator.request_landing_slot` | RobotSystem / Дрон | Orchestrator |
-| `v1.droneport.dp-001.orchestrator.events.slot_assigned` | Orchestrator | RobotSystem / Дрон |
-| `v1.droneport.dp-001.port_manager.reserve_slot` | Orchestrator | PortManager |
-| `v1.droneport.dp-001.power_health.run_diagnostics` | Orchestrator | PowerHealthManager |
-| `replies.v1.droneport.dp-001.orchestrator.<request_id>` | Orchestrator | Запросивший клиент |
-
-
----
-
-## 🛡️ Цели безопасности
-
-| Цель | Компонент | Как реализовано |
-|------|-----------|-----------------|
-| **Предотвращение столкновений** | PortManager | Проверка `is_port_occupied()` перед резервированием |
-| **Валидация совместимости** | PortManager | `_validate_drone_compatibility()` (габариты, протокол) |
-| **Контроль состояния** | PowerHealthManager | Диагностика моторов, температуры, батареи |
-| **Идемпотентность** | StateStore | Ключи Redis `drone:{id}`, `port:{id}` |
-| **Атомарность** | StateStore | Операции Redis `hset` / `hgetall` |
-| **Мониторинг** | Orchestrator | `_handle_health_check()`, отчёты оператору |
-
----

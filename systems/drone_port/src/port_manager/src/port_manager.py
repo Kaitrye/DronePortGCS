@@ -2,40 +2,38 @@
 PortManager — управление посадочными площадками.
 """
 from typing import Dict, Any, List, Optional
-from shared.base_system import BaseSystem
-from broker.system_bus import SystemBus
-from src.state_store.src.state_store import StateStore
-from src.port_manager.topics import PortManagerTopics
+from sdk.base_component import BaseComponent
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.state_store.src.state_store import StateStore
+from systems.drone_port.src.port_manager.topics import PortManagerTopics
 
-class PortManager(BaseSystem):
+
+class PortManager(BaseComponent):
     def __init__(
         self,
-        system_id: str,
+        component_id: str,
         name: str,
-        bus: SystemBus,
+        bus: MQTTSystemBus,
         state_store: StateStore,
-        health_port: Optional[int] = None,
     ):
-        self.topics = PortManagerTopics(system_id)
+        self.topics = PortManagerTopics(component_id)
         self.state = state_store
         
         super().__init__(
-            system_id=system_id,
-            system_type="droneport",
-            topic=self.topics.BASE,
+            component_id=component_id,
+            component_type="droneport",
+            topic=self.topics.base_topic,
             bus=bus,
-            health_port=health_port,
         )
         self.name = name
         print(f"PortManager '{name}' initialized")
-        
-        self._register_handlers()
 
     def _register_handlers(self) -> None:
-        self.register_handler(self.topics.RESERVE_SLOT, self._handle_reserve_slot)
-        self.register_handler(self.topics.RELEASE_SLOT, self._handle_release_slot)
-        self.register_handler(self.topics.REQUEST_LANDING_SLOT, self._handle_request_landing_slot)
-        self.register_handler(self.topics.GET_PORT_STATUS, self._handle_get_port_status)
+        """Регистрация обработчиков по action (строка), не по топику!"""
+        self.register_handler("reserve_slot", self._handle_reserve_slot)
+        self.register_handler("release_slot", self._handle_release_slot)
+        self.register_handler("request_landing_slot", self._handle_request_landing_slot)
+        self.register_handler("get_port_status", self._handle_get_port_status)
 
     def _handle_reserve_slot(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload", {})

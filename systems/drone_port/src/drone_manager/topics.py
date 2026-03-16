@@ -2,33 +2,34 @@
 Топики для DroneManager.
 Взаимодействие с физическими дронами и координация с другими компонентами.
 """
-
 class DroneManagerTopics:
     VERSION = "v1"
     SYSTEM_TYPE = "droneport"
     
     def __init__(self, system_id: str):
         self.system_id = system_id
-        self.BASE = f"{self.VERSION}.{self.SYSTEM_TYPE}.{self.system_id}.drone_manager"
+        self.base_topic = f"{self.VERSION}.{self.SYSTEM_TYPE}.{self.system_id}.drone_manager"
         
         # === Команды от дронов ===
-        self.REQUEST_LANDING = f"{self.BASE}.request_landing"
-        self.REQUEST_TAKEOFF = f"{self.BASE}.request_takeoff"
-        self.SELF_DIAGNOSTICS = f"{self.BASE}.self_diagnostics"
+        self.REQUEST_LANDING = f"{self.base_topic}.request_landing"
+        self.REQUEST_TAKEOFF = f"{self.base_topic}.request_takeoff"
+        self.SELF_DIAGNOSTICS = f"{self.base_topic}.self_diagnostics"
         
-        # === Исходящие команды дронам ===
-        self.EVENTS_BASE = f"{self.BASE}.events"
-        self.LANDING_ALLOWED = f"{self.EVENTS_BASE}.landing_allowed"
-        self.TAKEOFF_ALLOWED = f"{self.EVENTS_BASE}.takeoff_allowed"
+        # === Исходящие события дронам ===
+        self.LANDING_ALLOWED = f"{self.base_topic}.events.landing_allowed"
+        self.TAKEOFF_ALLOWED = f"{self.base_topic}.events.takeoff_allowed"
         
-        # === Внутренние команды (от других компонентов) ===
-        self.REGISTER_DRONE = f"{self.BASE}.register_drone"
-        self.DELETE_DRONE = f"{self.BASE}.delete_drone"
-        self.GET_CHARGING_DATA = f"{self.BASE}.get_charging_data"
+        # === Запросы данных (общий для SITL и Эксплуатанта) ===
+        self.GET_AVAILABLE_DRONES = f"{self.base_topic}.get_available_drones"
         
-        # === SITL Integration ===
-        self.GET_SITL_DATA = f"{self.BASE}.get_sitl_data"
-        self.UPDATE_SITL_POSITION = f"{self.BASE}.update_sitl_position"
-        
-        # === Для Эксплуатанта ===
-        self.GET_AVAILABLE_DRONES = f"{self.BASE}.get_available_drones"
+        # === Actions для BaseComponent ===
+        self.ACTIONS = {
+            "request_landing": self.REQUEST_LANDING,
+            "request_takeoff": self.REQUEST_TAKEOFF,
+            "self_diagnostics": self.SELF_DIAGNOSTICS,
+            "get_available_drones": self.GET_AVAILABLE_DRONES,
+        }
+    
+    def get_topic_for_action(self, action: str) -> str:
+        """Получить топик для действия."""
+        return self.ACTIONS.get(action, f"{self.base_topic}.{action}")

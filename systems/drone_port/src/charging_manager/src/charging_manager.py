@@ -1,92 +1,163 @@
 """
-ChargingManager — ТОЛЬКО логика зарядки дронов.
+ChargingManager — логика зарядки дронов.
 """
-
 import datetime
 from typing import Dict, Any, Optional
-from shared.base_system import BaseSystem
-from broker.src.system_bus import SystemBus
-from src.state_store.src.state_store import StateStore
-from src.charging_manager.topics import ChargingManagerTopics
-from src.drone_registry.topics import DroneRegistryTopics
+from sdk.base_component import BaseComponent
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.charging_manager.topics import ChargingManagerTopics
+from systems.drone_port.src.drone_registry.topics import DroneRegistryTopics
 
-class ChargingManager(BaseSystem):
+
+class ChargingManager(BaseComponent):
     def __init__(
         self,
-        system_id: str,
+        component_id: str,
         name: str,
-        bus: SystemBus,
-        state_store: StateStore,
-        health_port: Optional[int] = None,
+        bus: MQTTSystemBus,
     ):
-        self.topics = ChargingManagerTopics(system_id)
-        self.registry_topics = DroneRegistryTopics(system_id)
-        self.state = state_store
+        self.topics = ChargingManagerTopics(component_id)
+        self.registry_topics = DroneRegistryTopics(component_id)
+        
+        # ✅ Убран StateStore! Все данные через Broker → DroneRegistry
+        self._local_cache: Dict[str, Dict[str, Any]] = {}  # Временный кэш для заглушки
         
         super().__init__(
-            system_id=system_id,
-            system_type="droneport",
-            topic=self.topics.BASE,
+            component_id=component_id,
+            component_type="droneport",
+            topic=self.topics.base_topic,
             bus=bus,
-            health_port=health_port,
         )
         self.name = name
-        print(f"ChargingManager '{name}' initialized")
-        
-        self._register_handlers()
+        print(f"ChargingManager '{name}' initialized (no direct StateStore access)")
 
     def _register_handlers(self) -> None:
-        self.register_handler(self.topics.START_CHARGING, self._handle_start_charging)
-        self.register_handler(self.topics.STOP_CHARGING, self._handle_stop_charging)
-        self.register_handler(self.topics.CHARGE_TO_THRESHOLD, self._handle_charge_to_threshold)
-        self.register_handler(self.topics.GET_CHARGING_STATUS, self._handle_get_charging_status)
+        """Регистрация обработчиков по action (строка), не по топику!"""
+        self.register_handler("start_charging", self._handle_start_charging)
+        self.register_handler("stop_charging", self._handle_stop_charging)
+        self.register_handler("charge_to_threshold", self._handle_charge_to_threshold)
+        self.register_handler("get_charging_status", self._handle_get_charging_status)
 
-    def _handle_start_charging(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_drone_from_registry(self, drone_id: str) -> Optional[Dict[str, Any]]:
+        """
+        ✅ Запрос данных о дроне из DroneRegistry через Broker.
+        Временно используется локальный кэш как заглушка.
+        """
+        # === ЗАГЛУШКА: В будущем заменить на request к DroneRegistry ===
+        # response = self.bus.request(
+        #     self.registry_topics.GET_DRONE,
+        #     {"action": "get_drone", "payload": {"drone_id": drone_id}},
+        #     timeout=5.0
+        # )
+        # if response and response.get("status") == "ok":
+        #     return response.get("drone")
+        
+        # Временная заглушка
+        return self._local_cache.get(drone_id)
+
+    def _save_drone_to_registry(self, drone_id: str, data: Dict[str, Any]) -> bool:
+        """
+        ✅ Обновление данных о дроне в DroneRegistry через Broker.
+        Временно используется локальный кэш как заглушка.
+        """
+        # === ЗАГЛУШКА: В будущем заменить на request к DroneRegistry ===
+        # response = self.bus.request(
+        #     self.registry_topics.UPDATE_DRONE_STATE,
+        #     {
+        #         "action": "update_state",
+        #         "payload": {"drone_id": drone_id, **data}
+        #     },
+        #     timeout=5.0
+        # )
+        # return response and response.get("status") == "updated"
+        
+        # Временная заглушка
+        if drone_id in self._local_cache:
+            self._local_cache[drone_id].update(data)
+        else:
+            self._local_cache[drone_id] = {
+                "drone_id": drone_id,
+                "status": "landed",
+                "battery_level": "100.0",
+                **data
+            }
+        return True
+
+    def _handle_start_charging(self, message: Dict[str, Any]) -> None:
+        """
+        Обработка команды на запуск зарядки.
+        ✅ Publish-only: не отправляет ответ обратно.
+        """
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         
-        drone = self.state.get_drone(drone_id)
+        if not drone_id:
+            print(f"[{self.component_id}] No drone_id in payload")
+            return
+        
+        # ✅ Запрос данных из DroneRegistry (через заглушку)
+        drone = self._get_drone_from_registry(drone_id)
         if not drone:
-            return {"status": "failed", "reason": "Drone not found"}
+            print(f"[{self.component_id}] Drone not found: {drone_id}")
+            return
         
-        drone.update({
+        # Обновление статуса
+        update_data = {
             "status": "charging",
-            "charging_started": datetime.utcnow().isoformat()
-        })
-        self.state.save_drone(drone_id, drone)
+            "charging_started": datetime.datetime.utcnow().isoformat()
+        }
+        self._save_drone_to_registry(drone_id, update_data)
         
+        # ✅ Публикация события о начале зарядки
         self.bus.publish(
             self.topics.CHARGING_STARTED,
-            {"drone_id": drone_id, "timestamp": datetime.utcnow().isoformat()}
+            {
+                "action": "charging_started",
+                "drone_id": drone_id,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
         )
         
-        return {"status": "charging_started", "drone_id": drone_id}
+        print(f"[{self.component_id}] Charging started for drone: {drone_id}")
+        # ✅ Не возвращаем ответ (publish-only)
 
     def _handle_stop_charging(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Остановка зарядки дрона."""
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         
-        drone = self.state.get_drone(drone_id)
+        if not drone_id:
+            return {"status": "failed", "reason": "No drone_id"}
+        
+        drone = self._get_drone_from_registry(drone_id)
         if drone:
-            drone.update({
+            update_data = {
                 "status": "landed",
-                "charging_completed": datetime.utcnow().isoformat()
-            })
-            self.state.save_drone(drone_id, drone)
+                "charging_completed": datetime.datetime.utcnow().isoformat()
+            }
+            self._save_drone_to_registry(drone_id, update_data)
         
         self.bus.publish(
             self.topics.CHARGING_COMPLETED,
-            {"drone_id": drone_id, "timestamp": datetime.utcnow().isoformat()}
+            {
+                "action": "charging_completed",
+                "drone_id": drone_id,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
         )
         
         return {"status": "charging_stopped", "drone_id": drone_id}
 
     def _handle_charge_to_threshold(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Зарядка до целевого уровня батареи."""
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         min_battery = float(payload.get("min_battery", 90.0))
         current_battery = float(payload.get("current_battery", 50.0))
         departure_time_sec = payload.get("departure_time_sec", 3600)
+        
+        if not drone_id:
+            return {"status": "failed", "reason": "No drone_id"}
         
         if current_battery >= min_battery:
             return {
@@ -100,26 +171,24 @@ class ChargingManager(BaseSystem):
         max_power_w = 500.0
         charging_power_w = min(max_power_w, required_energy_wh * 3600 / departure_time_sec)
         
-        drone = self.state.get_drone(drone_id)
-        if drone:
-            drone.update({
-                "charging_power_w": str(charging_power_w),
-                "target_battery": str(min_battery),
-                "status": "charging"
-            })
-            self.state.save_drone(drone_id, drone)
+        update_data = {
+            "charging_power_w": str(charging_power_w),
+            "target_battery": str(min_battery),
+            "status": "charging"
+        }
+        self._save_drone_to_registry(drone_id, update_data)
         
-        # Обновление данных в DroneRegistry
-        self.bus.request(
+        # ✅ Уведомление DroneRegistry об обновлении
+        self.bus.publish(
             self.registry_topics.UPDATE_DRONE_STATE,
             {
+                "action": "update_state",
                 "payload": {
                     "drone_id": drone_id,
                     "battery_level": str(min_battery),
                     "charging_power_w": str(charging_power_w)
                 }
-            },
-            timeout=5.0
+            }
         )
         
         return {
@@ -130,7 +199,17 @@ class ChargingManager(BaseSystem):
         }
 
     def _handle_get_charging_status(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        drones = self.state.list_drones()
+        """Получение статуса зарядки всех дронов."""
+        # ✅ Запрос списка дронов из DroneRegistry (через заглушку)
+        # response = self.bus.request(
+        #     self.registry_topics.LIST_DRONES,
+        #     {"action": "list_drones", "payload": {}},
+        #     timeout=5.0
+        # )
+        # drones = response.get("drones", []) if response else []
+        
+        # Временная заглушка
+        drones = list(self._local_cache.values())
         charging_drones = [d for d in drones if d.get("status") == "charging"]
         
         return {
@@ -145,34 +224,3 @@ class ChargingManager(BaseSystem):
                 for d in charging_drones
             ]
         }
-
-
-# В конец файла charging_manager.py добавьте:
-
-def main():
-    import os
-    import redis
-    from broker.system_bus import SystemBus
-    from state_store.src.state_store import StateStore
-    
-    system_id = os.getenv("SYSTEM_ID", "dp-001")
-    component_id = os.getenv("COMPONENT_ID", "charging_manager")
-    redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port = int(os.getenv("REDIS_PORT", 6379))
-    broker_host = os.getenv("BROKER_HOST", "localhost")
-    broker_port = int(os.getenv("BROKER_PORT", 1883))
-    health_port = int(os.getenv("HEALTH_PORT", 8084))
-    
-    redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
-    state_store = StateStore(redis_client)
-    bus = SystemBus(component_id, host=broker_host, port=broker_port)
-    
-    manager = ChargingManager(
-        system_id=system_id,
-        name=component_id,
-        bus=bus,
-        state_store=state_store,
-        health_port=health_port
-    )
-    
-    manager.run()

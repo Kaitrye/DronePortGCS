@@ -1,220 +1,159 @@
 """
-DroneManager — взаимодействие с физическими дронами.
+DroneManager — взаимодействие с физическими дронами (БВС).
 Запросы самодиагностики + координация с портами.
 """
 import datetime
 from typing import Dict, Any, Optional, List
-from shared.base_system import BaseSystem
-from broker.system_bus import SystemBus
-from src.drone_manager.topics import DroneManagerTopics
-from src.drone_registry.topics import DroneRegistryTopics
-from src.port_manager.topics import PortManagerTopics
-from src.charging_manager.topics import ChargingManagerTopics
+from sdk.base_component import BaseComponent
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.drone_manager.topics import DroneManagerTopics
+from systems.drone_port.src.drone_registry.topics import DroneRegistryTopics
+from systems.drone_port.src.port_manager.topics import PortManagerTopics
 
-class DroneManager(BaseSystem):
+
+class DroneManager(BaseComponent):
     def __init__(
         self,
-        system_id: str,
+        component_id: str,
         name: str,
-        bus: SystemBus,
-        health_port: Optional[int] = None,
+        bus: MQTTSystemBus,
     ):
-        self.topics = DroneManagerTopics(system_id)
-        self.registry_topics = DroneRegistryTopics(system_id)
-        self.port_topics = PortManagerTopics(system_id)
-        self.charging_topics = ChargingManagerTopics(system_id)
+        self.topics = DroneManagerTopics(component_id)
+        self.registry_topics = DroneRegistryTopics(component_id)
+        self.port_topics = PortManagerTopics(component_id)
         
         super().__init__(
-            system_id=system_id,
-            system_type="droneport",
-            topic=self.topics.BASE,
+            component_id=component_id,
+            component_type="droneport",
+            topic=self.topics.base_topic,
             bus=bus,
-            health_port=health_port,
         )
         self.name = name
         print(f"DroneManager '{name}' initialized")
         
-        # Хранилище позиций дронов для SITL
-        self._drone_positions = {}
+        # Локальный кэш позиций для SITL
+        self._drone_positions: Dict[str, Dict[str, Any]] = {}
         
         self._register_handlers()
 
     def _register_handlers(self) -> None:
-        """Регистрация обработчиков команд от дронов"""
-        self.register_handler(
-            self.topics.REQUEST_LANDING,
-            self._handle_request_landing
-        )
-        self.register_handler(
-            self.topics.REQUEST_TAKEOFF,
-            self._handle_request_takeoff
-        )
-        self.register_handler(
-            self.topics.SELF_DIAGNOSTICS,
-            self._handle_self_diagnostics
-        )
-        self.register_handler(
-            self.topics.REGISTER_DRONE,
-            self._handle_register_drone
-        )
-        self.register_handler(
-            self.topics.DELETE_DRONE,
-            self._handle_delete_drone
-        )
-        # SITL handlers
-        self.register_handler(
-            self.topics.GET_SITL_DATA,
-            self._handle_get_sitl_data
-        )
-        self.register_handler(
-            self.topics.UPDATE_SITL_POSITION,
-            self._handle_update_sitl_position
-        )
-        # Эксплуатант handler
-        self.register_handler(
-            self.topics.GET_AVAILABLE_DRONES,
-            self._handle_get_available_drones
-        )
-
-    def _handle_get_sitl_data(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Возвращает данные о дронах для SITL симулятора.
-        Формат соответствует архитектуре SITL-module.
-        """
-        payload = message.get("payload", {})
-        drone_id = payload.get("drone_id")  # Если None - вернуть все дроны
+        """Регистрация обработчиков (только необходимые)."""
+        # === Команды от дронов ===
+        self.register_handler("request_landing", self._handle_request_landing)
+        self.register_handler("request_takeoff", self._handle_request_takeoff)
+        self.register_handler("self_diagnostics", self._handle_self_diagnostics)
         
-        if drone_id:
-            # Данные для конкретного дрона
-            position = self._drone_positions.get(drone_id, {})
-            return {
-                "status": "ok",
-                "drone_id": drone_id,
-                "timestamp": datetime.utcnow().isoformat(),
-                "position": {
-                    "lat": position.get("lat", 0.0),
-                    "lon": position.get("lon", 0.0),
-                    "alt": position.get("alt", 0.0),
-                    "heading": position.get("heading", 0.0)
-                },
-                "velocity": {
-                    "vx": position.get("vx", 0.0),
-                    "vy": position.get("vy", 0.0),
-                    "vz": position.get("vz", 0.0)
-                },
-                "battery": position.get("battery", 100.0),
-                "mode": position.get("mode", "STANDBY"),
-                "armed": position.get("armed", False)
-            }
-        else:
-            # Данные для всех дронов
-            drones_data = []
-            for did, pos in self._drone_positions.items():
-                drones_data.append({
-                    "drone_id": did,
-                    "position": {
-                        "lat": pos.get("lat", 0.0),
-                        "lon": pos.get("lon", 0.0),
-                        "alt": pos.get("alt", 0.0),
-                        "heading": pos.get("heading", 0.0)
-                    },
-                    "velocity": {
-                        "vx": pos.get("vx", 0.0),
-                        "vy": pos.get("vy", 0.0),
-                        "vz": pos.get("vz", 0.0)
-                    },
-                    "battery": pos.get("battery", 100.0),
-                    "mode": pos.get("mode", "STANDBY"),
-                    "armed": pos.get("armed", False)
-                })
-            
-            return {
-                "status": "ok",
-                "timestamp": datetime.utcnow().isoformat(),
-                "drones": drones_data,
-                "total": len(drones_data)
-            }
+        # === Запросы данных (одинаковый формат для SITL и Эксплуатанта) ===
+        self.register_handler("get_available_drones", self._handle_get_available_drones)
 
-    def _handle_update_sitl_position(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Обновляет позицию дрона для SITL.
-        Вызывается при получении телеметрии от дрона.
-        """
+    def _handle_request_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Запрос разрешения на посадку от дрона."""
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         
-        if not drone_id:
-            return {"status": "failed", "error_code": "INVALID_PAYLOAD"}
+        response = self.bus.request(
+            self.port_topics.REQUEST_LANDING_SLOT,
+            {"payload": {"drone_id": drone_id}},
+            timeout=5.0
+        )
         
-        # Обновление позиции
-        self._drone_positions[drone_id] = {
-            "lat": payload.get("lat", 0.0),
-            "lon": payload.get("lon", 0.0),
-            "alt": payload.get("alt", 0.0),
-            "heading": payload.get("heading", 0.0),
-            "vx": payload.get("vx", 0.0),
-            "vy": payload.get("vy", 0.0),
-            "vz": payload.get("vz", 0.0),
-            "battery": payload.get("battery", 100.0),
-            "mode": payload.get("mode", "STANDBY"),
-            "armed": payload.get("armed", False),
-            "last_update": datetime.utcnow().isoformat()
-        }
+        if response and response.get("status") == "slot_assigned":
+            port_id = response.get("port_id")
+            
+            # ✅ Регистрация дрона происходит автоматически при посадке
+            # (DroneRegistry подпишется на событие или запросит данные)
+            
+            self.bus.publish(
+                self.topics.LANDING_ALLOWED,
+                {"payload": {"drone_id": drone_id, "port_id": port_id}}
+            )
+            
+            return {"payload": {"status": "landing_allowed", "port_id": port_id}}
         
-        return {
-            "status": "position_updated",
-            "drone_id": drone_id,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        return {"payload": {"status": "landing_denied", "reason": "No available slots"}}
+
+    def _handle_request_takeoff(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Запрос разрешения на взлёт от дрона."""
+        payload = message.get("payload", {})
+        drone_id = payload.get("drone_id")
+        
+        # ✅ Удаление дрона из реестра происходит автоматически при взлёте
+        # (DroneRegistry подпишется на событие)
+        
+        self.bus.publish(
+            self.port_topics.RELEASE_SLOT,
+            {"payload": {"drone_id": drone_id}}
+        )
+        
+        self.bus.publish(
+            self.topics.TAKEOFF_ALLOWED,
+            {"payload": {"drone_id": drone_id}}
+        )
+        
+        return {"payload": {"status": "takeoff_allowed"}}
+
+    def _handle_self_diagnostics(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Обработка запроса самодиагностики от дрона."""
+        payload = message.get("payload", {})
+        drone_id = payload.get("drone_id")
+        health_data = payload.get("health_data", {})
+        
+        # Отправка данных о здоровье в Registry (если нужно)
+        if health_data:
+            self.bus.publish(
+                self.registry_topics.UPDATE_DRONE_STATE,
+                {"payload": {"drone_id": drone_id, "health_data": health_data}}
+            )
+        
+        return {"payload": {"status": "diagnostics_complete"}}
 
     def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Возвращает список доступных дронов с их локацией для Эксплуатанта.
+        Возвращает список доступных дронов с локацией.
+        ✅ Один формат ответа для SITL и Эксплуатанта.
+        ✅ Минимальный набор полей: lat, lon, alt, battery.
+        ✅ Ответ: {"payload": {"drones": [...]}}
         """
-        # Запрос данных из DroneRegistry
+        # Запрос списка дронов из DroneRegistry
         response = self.bus.request(
             self.registry_topics.LIST_DRONES,
             {"payload": {}},
             timeout=5.0
         )
         
-        if not response or response.get("status") != "ok":
-            return {
-                "status": "failed",
-                "error_code": "REGISTRY_UNAVAILABLE",
-                "drones": []
-            }
+        if not response:
+            return {"payload": {"drones": []}}
         
-        drones = response.get("drones", [])
-        available_drones = []
+        drones = response.get("payload", {}).get("drones", [])
         
+        # Формируем минимальный ответ
+        result = []
         for drone in drones:
-            # Фильтруем только доступные дроны (не в maintenance, не с критическими issues)
             if drone.get("status") in ["landed", "ready", "charging"]:
-                issues = drone.get("issues", [])
-                if "battery_critical" not in issues and "motor_fault" not in issues:
-                    # Получаем позицию из SITL данных
-                    position = self._drone_positions.get(drone["drone_id"], {})
-                    
-                    available_drones.append({
-                        "drone_id": drone["drone_id"],
-                        "status": drone.get("status"),
-                        "battery_level": float(drone.get("battery_level", 0)),
-                        "location": {
-                            "lat": position.get("lat", 0.0),
-                            "lon": position.get("lon", 0.0),
-                            "alt": position.get("alt", 0.0)
-                        },
-                        "port_id": drone.get("port_id", ""),
-                        "safety_target": drone.get("safety_target", "normal_operation"),
-                        "last_update": position.get("last_update", drone.get("last_update"))
-                    })
+                position = self._drone_positions.get(drone["drone_id"], {})
+                
+                result.append({
+                    "drone_id": drone["drone_id"],
+                    "status": drone.get("status"),
+                    "battery_level": float(drone.get("battery_level", 0)),
+                    "location": {
+                        "lat": position.get("lat", 0.0),
+                        "lon": position.get("lon", 0.0),
+                        "alt": position.get("alt", 0.0)
+                    }
+                })
         
-        return {
-            "status": "ok",
-            "timestamp": datetime.utcnow().isoformat(),
-            "drones": available_drones,
-            "total": len(available_drones)
-        }
+        return {"payload": {"drones": result}}
 
-    # ... остальные методы (_handle_request_landing, _handle_request_takeoff, и т.д.)
+    def update_drone_position(self, drone_id: str, lat: float, lon: float, alt: float, battery: float) -> None:
+        """
+        Обновляет позицию дрона в локальном кэше.
+        Вызывается при получении телеметрии (не через handler).
+        """
+        self._drone_positions[drone_id] = {
+            "lat": lat,
+            "lon": lon,
+            "alt": alt,
+            "battery": battery,
+            "last_update": datetime.datetime.utcnow().isoformat()
+        }

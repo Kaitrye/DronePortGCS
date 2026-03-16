@@ -1,161 +1,118 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # === Redis (хранилище состояния) ===
   redis:
     image: redis:7-alpine
-    container_name: droneport_redis
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
-      - droneport_network
+      - droneport_net
 
-  # === Droneport Orchestrator (маршрутизация) ===
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    # volumes:
+    #   - ./docker/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    command: mosquitto -c /mosquitto-no-auth.conf
+    networks:
+      - droneport_net
+
   orchestrator:
     build:
-      context: ./src/droneport_orchestrator
-      dockerfile: docker/Dockerfile
-    container_name: droneport_orchestrator
+      context: ../..
+      dockerfile: systems/drone_port/src/droneport_orchestrator/docker/Dockerfile
     environment:
-      - COMPONENT_ID=droneport_orchestrator
-      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - BROKER_HOST=${BROKER_HOST:-localhost}
-      - BROKER_PORT=${BROKER_PORT:-1883}
+      - SYSTEM_ID=dp-001
+      - COMPONENT_ID=orchestrator
+      - BROKER_HOST=mqtt
+      - BROKER_PORT=1883
       - HEALTH_PORT=8080
     ports:
       - "8080:8080"
     depends_on:
-      redis:
-        condition: service_healthy
+      - mqtt
     networks:
-      - droneport_network
-    restart: unless-stopped
+      - droneport_net
 
-  # === DroneManager (команды дронам, SITL) ===
   drone_manager:
     build:
-      context: ./src/drone_manager
-      dockerfile: docker/Dockerfile
-    container_name: drone_manager
+      context: ../..
+      dockerfile: systems/drone_port/src/drone_manager/docker/Dockerfile
     environment:
+      - SYSTEM_ID=dp-001
       - COMPONENT_ID=drone_manager
-      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - BROKER_HOST=${BROKER_HOST:-localhost}
-      - BROKER_PORT=${BROKER_PORT:-1883}
+      - BROKER_HOST=mqtt
+      - BROKER_PORT=1883
       - HEALTH_PORT=8081
     ports:
       - "8081:8081"
     depends_on:
-      redis:
-        condition: service_healthy
+      - mqtt
     networks:
-      - droneport_network
-    restart: unless-stopped
+      - droneport_net
 
-  # === DroneRegistry (Facade, реестр дронов) ===
   drone_registry:
     build:
-      context: ./src/drone_registry
-      dockerfile: docker/Dockerfile
-    container_name: drone_registry
+      context: ../..
+      dockerfile: systems/drone_port/src/drone_registry/docker/Dockerfile
     environment:
+      - SYSTEM_ID=dp-001
       - COMPONENT_ID=drone_registry
-      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
+      - BROKER_HOST=mqtt
+      - BROKER_PORT=1883
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - BROKER_HOST=${BROKER_HOST:-localhost}
-      - BROKER_PORT=${BROKER_PORT:-1883}
       - HEALTH_PORT=8082
     ports:
       - "8082:8082"
     depends_on:
-      redis:
-        condition: service_healthy
+      - mqtt
+      - redis
     networks:
-      - droneport_network
-    restart: unless-stopped
+      - droneport_net
 
-  # === PortManager (посадочные места) ===
   port_manager:
     build:
-      context: ./src/port_manager
-      dockerfile: docker/Dockerfile
-    container_name: port_manager
+      context: ../..
+      dockerfile: systems/drone_port/src/port_manager/docker/Dockerfile
     environment:
+      - SYSTEM_ID=dp-001
       - COMPONENT_ID=port_manager
-      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
+      - BROKER_HOST=mqtt
+      - BROKER_PORT=1883
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - BROKER_HOST=${BROKER_HOST:-localhost}
-      - BROKER_PORT=${BROKER_PORT:-1883}
       - HEALTH_PORT=8083
     ports:
       - "8083:8083"
     depends_on:
-      redis:
-        condition: service_healthy
+      - mqtt
+      - redis
     networks:
-      - droneport_network
-    restart: unless-stopped
+      - droneport_net
 
-  # === ChargingManager (зарядка) ===
   charging_manager:
     build:
-      context: .
-      dockerfile: src/charging_mananger/docker/Dockerfile
-    container_name: charging_manager
+      context: ../..
+      dockerfile: systems/drone_port/src/charging_manager/docker/Dockerfile
     environment:
+      - SYSTEM_ID=dp-001
       - COMPONENT_ID=charging_manager
-      - SYSTEM_ID=${SYSTEM_ID:-dp-001}
+      - BROKER_HOST=mqtt
+      - BROKER_PORT=1883
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - BROKER_HOST=${BROKER_HOST:-localhost}
-      - BROKER_PORT=${BROKER_PORT:-1883}
       - HEALTH_PORT=8084
     ports:
       - "8084:8084"
     depends_on:
-      redis:
-        condition: service_healthy
+      - mqtt
+      - redis
     networks:
-      - droneport_network
-    restart: unless-stopped
-    volumes:
-      - ./src:/app/src
-      - ./shared:/app/shared          # Добавить
-      - ./broker:/app/broker          # Добавить
-      - ./config:/app/config 
-
-  # === SITL Simulator (опционально, для тестов) ===
-  sitl:
-    image: ardupilot/sitl:latest
-    container_name: droneport_sitl
-    environment:
-      - VEHICLE=ArduCopter
-    ports:
-      - "5760:5760/udp"
-      - "14550:14550/udp"
-    networks:
-      - droneport_network
-    profiles:
-      - simulation
-    restart: unless-stopped
+      - droneport_net
 
 networks:
-  droneport_network:
+  droneport_net:
     driver: bridge
-
-volumes:
-  redis_data:

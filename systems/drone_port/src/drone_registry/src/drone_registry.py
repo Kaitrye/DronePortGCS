@@ -1,49 +1,48 @@
 """
-DroneRegistry — Facade для сбора данных со всех компонентов.
-Знает о PortManager, ChargingManager, DiagnosticsManager, DroneManager.
+DroneRegistry — централизованный реестр дронов.
+Возвращает список с safety_target и issues
+Знает о PortManager, ChargingManager, DroneManager.
 """
 import datetime
-from typing import Dict, Any, List, Optional
-from shared.base_system import BaseSystem
-from broker.system_bus import SystemBus
-from src.state_store.src.state_store import StateStore
-from src.drone_registry.topics import DroneRegistryTopics
-from src.port_manager.topics import PortManagerTopics
-from src.charging_manager.topics import ChargingManagerTopics
+from typing import Dict, Any
+from sdk.base_component import BaseComponent
+from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from systems.drone_port.src.state_store.src.state_store import StateStore
+from systems.drone_port.src.drone_registry.topics import DroneRegistryTopics
+from systems.drone_port.src.port_manager.topics import PortManagerTopics
+from systems.drone_port.src.charging_manager.topics import ChargingManagerTopics
 
-class DroneRegistry(BaseSystem):
+
+class DroneRegistry(BaseComponent):
     def __init__(
         self,
-        system_id: str,
+        component_id: str,
         name: str,
-        bus: SystemBus,
+        bus: MQTTSystemBus,
         state_store: StateStore,
-        health_port: Optional[int] = None,
     ):
-        self.topics = DroneRegistryTopics(system_id)
-        self.port_topics = PortManagerTopics(system_id)
-        self.charging_topics = ChargingManagerTopics(system_id)
+        self.topics = DroneRegistryTopics(component_id)
+        self.port_topics = PortManagerTopics(component_id)
+        self.charging_topics = ChargingManagerTopics(component_id)
         self.state = state_store
         
         super().__init__(
-            system_id=system_id,
-            system_type="droneport",
-            topic=self.topics.BASE,
+            component_id=component_id,
+            component_type="droneport",
+            topic=self.topics.base_topic,  # ✅ lowercase: base_topic
             bus=bus,
-            health_port=health_port,
         )
         self.name = name
         print(f"DroneRegistry '{name}' initialized (Facade pattern)")
-        
-        self._register_handlers()
 
     def _register_handlers(self) -> None:
-        self.register_handler(self.topics.GET_AGGREGATED_FLEET_STATUS, self._handle_get_aggregated_status)
-        self.register_handler(self.topics.REGISTER_DRONE, self._handle_register_drone)
-        self.register_handler(self.topics.DELETE_DRONE, self._handle_delete_drone)
-        self.register_handler(self.topics.GET_DRONE, self._handle_get_drone)
-        self.register_handler(self.topics.LIST_DRONES, self._handle_list_drones)
-        self.register_handler(self.topics.UPDATE_DRONE_STATE, self._handle_update_drone_state)
+        """Регистрация обработчиков по action (строка), не по топику!"""
+        self.register_handler("get_aggregated_status", self._handle_get_aggregated_status)
+        self.register_handler("register_drone", self._handle_register_drone)
+        self.register_handler("delete_drone", self._handle_delete_drone)
+        self.register_handler("get_drone", self._handle_get_drone)
+        self.register_handler("list_drones", self._handle_list_drones)
+        self.register_handler("update_state", self._handle_update_drone_state)
 
     def _handle_get_aggregated_status(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Facade метод: собирает данные со ВСЕХ компонентов."""
@@ -66,7 +65,7 @@ class DroneRegistry(BaseSystem):
         charging = charging_response.get("payload", []) if charging_response else []
         
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.utcnow().isoformat(),
             "fleet": {
                 "total": len(drones),
                 "charging": sum(1 for d in drones if d.get("status") == "charging"),
@@ -95,14 +94,14 @@ class DroneRegistry(BaseSystem):
             "battery_level": str(payload.get("battery_level", 0.0)),
             "port_id": payload.get("port_id", ""),
             "status": payload.get("status", "landed"),
-            "last_update": datetime.utcnow().isoformat()
+            "last_update": datetime.datetime.utcnow().isoformat()
         }
         
         self.state.save_drone(drone_id, drone_data)
         
         self.bus.publish(
             self.topics.DRONE_REGISTERED,
-            {"drone_id": drone_id, "timestamp": datetime.utcnow().isoformat()}
+            {"drone_id": drone_id, "timestamp": datetime.datetime.utcnow().isoformat()}
         )
         
         return {"status": "registered", "drone_id": drone_id}
@@ -116,7 +115,7 @@ class DroneRegistry(BaseSystem):
         
         self.bus.publish(
             self.topics.DRONE_DELETED,
-            {"drone_id": drone_id, "timestamp": datetime.utcnow().isoformat()}
+            {"drone_id": drone_id, "timestamp": datetime.datetime.utcnow().isoformat()}
         )
         
         return {"status": "deleted", "drone_id": drone_id}
@@ -161,7 +160,7 @@ class DroneRegistry(BaseSystem):
             drone.update({
                 "issues": payload.get("issues", []),
                 "health_data": payload.get("health_data", {}),
-                "last_update": datetime.utcnow().isoformat()
+                "last_update": datetime.datetime.utcnow().isoformat()
             })
             self.state.save_drone(drone_id, drone)
             
