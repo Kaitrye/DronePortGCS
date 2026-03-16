@@ -88,11 +88,11 @@ def test_publish_subscribe_roundtrip(system_bus):
     ok = system_bus.publish(topic, message)
     assert ok is True
 
-    # Ждём доставки
-    for _ in range(25):
+    # Ждём доставки (до 30с — в CI партиции назначаются медленнее)
+    for _ in range(60):
         if received:
             break
-        time.sleep(0.2)
+        time.sleep(0.5)
 
     assert len(received) == 1
     assert received[0]["action"] == "test"
