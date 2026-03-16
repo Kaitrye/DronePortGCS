@@ -54,12 +54,26 @@ jobs:
       run: make init
 
     - name: Docker up
-      run: make dummy-system-up
+      run: |
+        make docker-up
+        make dummy-system-up
+        make gcs-system-up
+
+    - name: Wait for GCS readiness
+      run: bash scripts/wait_gcs_readiness.sh
 
     - name: Run integration-tests
       run: make integration-test-run
 
+    - name: Dump docker logs
+      if: failure()
+      run: make docker-logs-ci
+
     - name: Docker down
       if: always()
-      run: make dummy-system-down
+      run: |
+        make gcs-system-down
+        make dummy-system-down
+        make docker-down
+
       

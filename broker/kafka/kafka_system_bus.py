@@ -171,6 +171,7 @@ class KafkaSystemBus(SystemBus):
                 'value_deserializer': lambda m: json.loads(m.decode('utf-8')),
                 'auto_offset_reset': 'earliest',
                 'enable_auto_commit': True,
+                'metadata_max_age_ms': 5000,
                 **self._get_sasl_config()
             }
             consumer = KafkaConsumer(topic, **config)

@@ -3,7 +3,7 @@ import signal
 import time
 
 from broker.bus_factory import create_system_bus
-from systems.gcs.src.mission_manager.src.mission_converter import MissionConverterComponent
+from systems.gcs.src.mission_converter.src.mission_converter import MissionConverterComponent
 
 
 def main():
