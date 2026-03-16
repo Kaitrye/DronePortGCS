@@ -115,8 +115,10 @@ def expand_two_points_to_path(points, segments=DEFAULT_SEGMENTS):
                 "param4": 0.0,  # yaw пока не используем
             }
         )
-
-    return path
+        
+    back_path = list(reversed(path[:-1]))
+    cycle_path = path + back_path
+    return cycle_path
 
 
 def points_to_wpl(points, frame = DEFAULT_FRAME):
