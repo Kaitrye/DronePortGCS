@@ -7,7 +7,9 @@ from typing import Any, Dict, Optional
 from broker.system_bus import SystemBus
 from sdk.base_component import BaseComponent
 from systems.gcs.src.contracts import DroneStatus, MissionStatus
-from systems.gcs.src.drone_manager.topics import ComponentTopics, DroneManagerActions, ExternalTopics
+from systems.gcs.src.drone_manager.topics import ComponentTopics, DroneManagerActions
+from systems.gcs.src.mission_store.topics import MissionStoreActions
+from systems.gcs.src.topics import ExternalDroneActions, ExternalTopics
 from systems.gcs.src.drone_store.topics import DroneStoreActions
 
 
@@ -26,49 +28,6 @@ class DroneManagerComponent(BaseComponent):
         self.register_handler(DroneManagerActions.TELEMETRY_SAVE, self._handle_telemetry_save)
 
 
-    def send_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        correlation_id: Optional[str] = None,
-        timeout: float = 10.0,
-    ) -> Optional[dict]:
-        message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            message["correlation_id"] = correlation_id
-
-        return self.bus.request(
-            target_topic,
-            message,
-            timeout=timeout,
-        )
-
-    def publish_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        correlation_id: Optional[str] = None,
-    ) -> None:
-        message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            message["correlation_id"] = correlation_id
-
-        self.bus.publish(
-            target_topic, 
-            message
-        )
-
-
     def _handle_mission_upload(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload", {})
         correlation_id = message.get("correlation_id")
@@ -78,7 +37,7 @@ class DroneManagerComponent(BaseComponent):
 
         self.publish_to_other_system(
             ExternalTopics.DRONE,
-            "upload_mission",
+            ExternalDroneActions.UPLOAD_MISSION,
             {
                 "mission_id": mission_id,
                 "mission": wpl,
@@ -88,7 +47,7 @@ class DroneManagerComponent(BaseComponent):
 
         self.publish_to_other_system(
             ComponentTopics.GCS_MISSION_STORE,
-            "store.update_mission",
+            MissionStoreActions.UPDATE_MISSION,
             {
                 "mission_id": mission_id,
                 "fields": {
@@ -130,14 +89,14 @@ class DroneManagerComponent(BaseComponent):
 
         self.publish_to_other_system(
             ExternalTopics.DRONE,
-            "mission.start",
+            ExternalDroneActions.MISSION_START,
             {},
             correlation_id=correlation_id,
         )
         
         self.publish_to_other_system(
             ComponentTopics.GCS_MISSION_STORE,
-            "store.update_mission",
+            MissionStoreActions.UPDATE_MISSION,
             {
                 "mission_id": mission_id,
                 "fields": {

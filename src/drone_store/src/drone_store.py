@@ -78,7 +78,6 @@ class DroneStoreComponent(BaseRedisStoreComponent):
 
 
     def _register_handlers(self):
-        self.register_handler(DroneStoreActions.AVAILABLE_DRONES, self._handle_available_drones)
         self.register_handler(DroneStoreActions.UPDATE_DRONE, self._handle_update_drone)
         self.register_handler(DroneStoreActions.SAVE_TELEMETRY, self._handle_save_telemetry)
 
@@ -101,27 +100,3 @@ class DroneStoreComponent(BaseRedisStoreComponent):
         self._write_drone(drone_id, drone_state)
 
         return None
-
-    def _handle_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        available_drones = []
-
-        for drone_id in self._available_drone_ids():
-            state = self._read_drone(drone_id)
-            if state is None:
-                self.redis_client.srem(self._available_drones_key(), drone_id)
-                self.redis_client.srem(self._all_drones_key(), drone_id)
-                continue
-            if state.get("status") != "available":
-                self.redis_client.srem(self._available_drones_key(), drone_id)
-                continue
-            available_drones.append(
-                {
-                    "drone_id": drone_id,
-                    "status": state.get("status"),
-                    "battery": int(state.get("battery", 0)),
-                }
-            )
-
-        return {
-            "available_drones": available_drones,
-        }

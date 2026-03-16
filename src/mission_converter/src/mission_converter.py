@@ -7,7 +7,8 @@ from typing import Any, Dict, Optional
 
 from broker.system_bus import SystemBus
 from sdk.base_component import BaseComponent
-from systems.gcs.src.mission_manager.topics import ComponentTopics, MissionActions
+from systems.gcs.src.mission_converter.topics import ComponentTopics, MissionActions
+from systems.gcs.src.mission_store.topics import MissionStoreActions
 
 
 class MissionConverterComponent(BaseComponent):
@@ -21,17 +22,6 @@ class MissionConverterComponent(BaseComponent):
 
     def _register_handlers(self):
         self.register_handler(MissionActions.MISSION_PREPARE, self._handle_mission_prepare)
-
-    def send_to_other_system(self, target_topic: str, action: str, payload: dict, timeout: float = 10.0) -> Optional[dict]:
-        return self.bus.request(
-            target_topic,
-            {
-                "action": action,
-                "sender": self.component_id,
-                "payload": payload,
-            },
-            timeout=timeout,
-        )
 
     @staticmethod
     def _extract_points(payload: Dict[str, Any]) -> list[Dict[str, Any]]:
@@ -74,7 +64,7 @@ class MissionConverterComponent(BaseComponent):
 
         mission_response = self.send_to_other_system(
             ComponentTopics.GCS_MISSION_STORE,
-            "store.get_mission",
+            MissionStoreActions.GET_MISSION,
             {
                 "mission_id": mission_id
             },
