@@ -14,4 +14,4 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "-m", "systems.gcs.src.mission_manager"]
+CMD ["python", "-m", "systems.gcs.src.mission_converter"]

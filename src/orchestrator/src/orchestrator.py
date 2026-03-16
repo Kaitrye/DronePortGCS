@@ -9,6 +9,8 @@ from broker.system_bus import SystemBus
 from sdk.base_component import BaseComponent
 from systems.gcs.src.orchestrator.topics import OrchestratorActions, ComponentTopics
 from systems.gcs.src.path_planner.topics import PathPlannerActions
+from systems.gcs.src.mission_converter.topics import MissionActions
+from systems.gcs.src.drone_manager.topics import DroneManagerActions
 
 
 # Единая точка входа для команд эксплуатанта.
@@ -23,49 +25,8 @@ class OrchestratorComponent(BaseComponent):
 
     def _register_handlers(self):
         self.register_handler(OrchestratorActions.TASK_SUBMIT, self._handle_task_submit)
-        self.register_handler(OrchestratorActions.TASK_AVAILABLE_DRONES, self._handle_task_available_drones)
         self.register_handler(OrchestratorActions.TASK_ASSIGN, self._handle_task_assign)
         self.register_handler(OrchestratorActions.TASK_START, self._handle_task_start)
-
-    def send_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        timeout: float = 10.0,
-        correlation_id: Optional[str] = None,
-    ) -> Optional[dict]:
-        request_message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            request_message["correlation_id"] = correlation_id
-
-        return self.bus.request(
-            target_topic,
-            request_message,
-            timeout=timeout,
-        )
-
-    def publish_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        correlation_id: Optional[str] = None,
-    ) -> None:
-        message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            message["correlation_id"] = correlation_id
-
-        self.bus.publish(target_topic, message)
-
 
     def _handle_task_submit(self, message: Dict[str, Any]) -> Dict[str, Any]:
         task_payload = message.get("payload", {})
@@ -100,28 +61,6 @@ class OrchestratorComponent(BaseComponent):
             "error": "failed to build route"
         }
 
-    def _handle_task_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        correlation_id = message.get("correlation_id")
-
-        drones_response = self.send_to_other_system(
-            ComponentTopics.GCS_DRONE_STORE,
-            "store.available_drones",
-            {},
-            correlation_id=correlation_id,
-        )
-
-        if drones_response and drones_response.get("success"):
-            payload = drones_response.get("payload", {})
-            return {
-                "from": self.component_id,
-                "available_drones": payload.get("available_drones", []),
-            }
-
-        return {
-            "from": self.component_id, 
-            "error": "store unavailable"
-        }
-
 
     def _handle_task_assign(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload", {})
@@ -131,10 +70,11 @@ class OrchestratorComponent(BaseComponent):
 
         prepared = self.send_to_other_system(
             ComponentTopics.GCS_MISSION_CONVERTER,
-            "mission.prepare",
+            MissionActions.MISSION_PREPARE,
             {
                 "mission_id": mission_id,
             },
+            timeout=30.0,
             correlation_id=correlation_id,
         )
 
@@ -145,8 +85,8 @@ class OrchestratorComponent(BaseComponent):
 
             if wpl:
                 self.publish_to_other_system(
-                    ComponentTopics.GCS_DRONE,
-                    "mission.upload",
+                    ComponentTopics.GCS_DRONE_MANAGER,
+                    DroneManagerActions.MISSION_UPLOAD,
                     {
                         "mission_id": mission_id,
                         "drone_id": drone_id,
@@ -165,8 +105,8 @@ class OrchestratorComponent(BaseComponent):
         drone_id = payload.get("drone_id")
 
         self.publish_to_other_system(
-            ComponentTopics.GCS_DRONE,
-            "mission.start",
+            ComponentTopics.GCS_DRONE_MANAGER,
+            DroneManagerActions.MISSION_START,
             {
                 "mission_id": mission_id, 
                 "drone_id": drone_id
