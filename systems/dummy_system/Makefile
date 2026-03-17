@@ -1,4 +1,4 @@
-.PHONY: help prepare unit-test integration-test tests docker-up docker-down docker-logs
+.PHONY: help prepare unit-test integration-test integration-test-run tests docker-up docker-down docker-logs
 
 PIPENV_PIPFILE = ../../config/Pipfile
 PYTEST_CONFIG = ../../config/pyproject.toml
@@ -11,7 +11,8 @@ help:
 	@echo "make docker-down       - Остановить систему"
 	@echo "make docker-logs       - Логи"
 	@echo "make unit-test         - Unit тесты компонентов"
-	@echo "make integration-test  - Интеграционные тесты (docker required)"
+	@echo "make integration-test  - Интеграционные тесты (docker-up + run + docker-down)"
+	@echo "make integration-test-run - Интеграционные тесты (только запуск pytest)"
 	@echo "make tests             - Все тесты"
 
 prepare:
@@ -32,11 +33,14 @@ docker-logs:
 unit-test:
 	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) tests/test_dummy_unit.py -v
 
-integration-test: docker-up
-	@echo "Waiting for broker and components..."
-	@sleep 45
+integration-test-run:
 	@set -a && . $(GENERATED)/.env && set +a && \
 		PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) tests/test_integration.py -v
+
+integration-test: docker-up 
+	@echo "Waiting for broker and components..."
+	@sleep 10
+	-$(MAKE) integration-test-run
 	-$(MAKE) docker-down
 
 tests: unit-test integration-test
