@@ -68,9 +68,8 @@ tests: unit-test integration-test
 
 docker-up:
 	@test -f docker/.env || cp docker/example.env docker/.env
-	@profile=$${BROKER_TYPE:-$$(grep '^BROKER_TYPE=' docker/.env 2>/dev/null | cut -d= -f2)}; \
-	profile=$${profile:-kafka}; \
-	$(DOCKER_COMPOSE) --profile $$profile up -d
+	@$(LOAD_ENV) && profile="--profile $${BROKER_TYPE:-kafka}"; \
+	$(DOCKER_COMPOSE) $$profile up -d
 
 docker-down:
 	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null
@@ -78,11 +77,6 @@ docker-down:
 
 docker-logs:
 	$(DOCKER_COMPOSE) --profile $$(grep BROKER_TYPE docker/.env | cut -d= -f2) logs -f
-
-docker-logs-ci:
-	@profile=$${BROKER_TYPE:-$$(grep '^BROKER_TYPE=' docker/.env 2>/dev/null | cut -d= -f2)}; \
-	profile=$${profile:-kafka}; \
-	$(DOCKER_COMPOSE) --profile $$profile logs
 	
 docker-ps:
 	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
