@@ -28,11 +28,7 @@ services:
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_OPTS: -Djava.security.auth.login.config=/tmp/jaas.conf
       ADMIN_USER: ${ADMIN_USER:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      COMPONENT_USER_A: ${COMPONENT_USER_A:-}
-      COMPONENT_PASSWORD_A: ${COMPONENT_PASSWORD_A:-}
-      COMPONENT_USER_B: ${COMPONENT_USER_B:-}
-      COMPONENT_PASSWORD_B: ${COMPONENT_PASSWORD_B:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_secret_123}
     volumes:
       - ./kafka/entrypoint.sh:/entrypoint.sh:ro
     command: ["/bin/sh", "/entrypoint.sh"]
@@ -55,11 +51,7 @@ services:
       - "${MQTT_PORT:-1883}:1883"
     environment:
       ADMIN_USER: ${ADMIN_USER:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      COMPONENT_USER_A: ${COMPONENT_USER_A:-}
-      COMPONENT_PASSWORD_A: ${COMPONENT_PASSWORD_A:-}
-      COMPONENT_USER_B: ${COMPONENT_USER_B:-}
-      COMPONENT_PASSWORD_B: ${COMPONENT_PASSWORD_B:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_secret_123}
     volumes:
       - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mqtt/entrypoint.sh:/entrypoint.sh:ro
