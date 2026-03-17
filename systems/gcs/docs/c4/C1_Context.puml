@@ -1,0 +1,14 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+LAYOUT_LEFT_RIGHT()
+
+System_Ext(operator_system, "Эксплуатант", "Постановка задач, назначение дронов на миссии")
+System(gcs, "НУС (Ground Control Station)", "Конвертация и передача миссии на дроны")
+System_Ext(drones, "Дроны (БАС)", "Выполнение миссии, отправка телеметрии")
+
+Rel(operator_system, gcs, "Постановка и отмена миссий")
+Rel(gcs, operator_system, "Передача списка доступных дронов")
+Rel(gcs, drones, "Загрузка миссии в формате WPL")
+Rel(drones, gcs, "Телеметрия")
+
+@enduml

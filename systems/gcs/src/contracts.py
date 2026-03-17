@@ -1,13 +1,17 @@
 """Контракты доменной модели для GCS."""
 
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)
 class MissionStatus:
     CREATED: str = "created"
-    PLANNED: str = "planned"
+    ASSIGNED: str = "assigned"
     RUNNING: str = "running"
-    FAILED: str = "failed"
-    CANCELLED: str = "cancelled"
-    ABORTED: str = "aborted"
+
+@dataclass(frozen=True)
+class DroneStatus:
+    AVAILABLE: str = "available"
+    RESERVED: str = "reserved"
+    BUSY: str = "BUSY"

@@ -14,7 +14,7 @@ class DummyComponent(BaseComponent):
         component_id: str,
         name: str,
         bus: SystemBus,
-        topic: str = "components.dummy_component",
+        topic: str = "components.dummy_component_b",
     ):
         self.name = name
         self._state = {"counter": 0}
