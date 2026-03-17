@@ -79,5 +79,3 @@ jobs:
         make gcs-system-down
         make dummy-system-down
         make docker-down
-
-      
