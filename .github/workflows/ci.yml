@@ -57,9 +57,7 @@ jobs:
         make docker-up
         make dummy-system-up
         make gcs-system-up
-
-    - name: Wait for GCS readiness
-      run: bash scripts/wait_gcs_readiness.sh
+        sleep 60
 
     - name: Run integration-tests
       run: make integration-test-run
@@ -74,7 +72,7 @@ jobs:
         docker logs drones-orchestrator-1 || true
         docker logs drones-path_planner-1 || true
         docker logs drones-drone_manager-1 || true
-        docker logs --tail 100 kafka || true
+        docker logs --tail 100 mqtt || true
 
     - name: Docker down
       if: always()
