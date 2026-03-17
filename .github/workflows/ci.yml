@@ -62,7 +62,6 @@ jobs:
     - name: Run integration-tests
       run: make integration-test-run
 
-
     - name: Dump logs for each container
       if: always()
       run: |
