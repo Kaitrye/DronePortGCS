@@ -57,11 +57,8 @@ dummy-system-down:
 gcs-system-up: 
 	@$(MAKE) -C systems/gcs prepare
 	@set -a && . systems/gcs/.generated/.env && set +a && \
-		$(GCS_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build --no-deps redis
-	@sleep 45
-	@set -a && . systems/gcs/.generated/.env && set +a && \
 		$(GCS_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build --no-deps \
-		mission_store drone_store mission_converter orchestrator path_planner drone_manager
+		redis mission_store drone_store mission_converter orchestrator path_planner drone_manager
 
 gcs-system-down:
 	-@set -a && . systems/gcs/.generated/.env && set +a && \
