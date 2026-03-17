@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-  pull_request:
 
 jobs:
   unit-tests:
@@ -65,9 +64,17 @@ jobs:
     - name: Run integration-tests
       run: make integration-test-run
 
-    - name: Dump docker logs
-      if: failure()
-      run: make docker-logs-ci
+
+    - name: Dump logs for each container
+      if: always()
+      run: |
+        docker logs drones-mission_store-1 || true
+        docker logs drones-drone_store-1 || true
+        docker logs drones-mission_converter-1 || true
+        docker logs drones-orchestrator-1 || true
+        docker logs drones-path_planner-1 || true
+        docker logs drones-drone_manager-1 || true
+        docker logs --tail 100 kafka || true
 
     - name: Docker down
       if: always()
