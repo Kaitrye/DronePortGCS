@@ -139,6 +139,8 @@ def system_bus():
         os.environ["BROKER_USER"] = os.environ["ADMIN_USER"]
     if not os.environ.get("BROKER_PASSWORD") and os.environ.get("ADMIN_PASSWORD"):
         os.environ["BROKER_PASSWORD"] = os.environ["ADMIN_PASSWORD"]
+    print(f"Using broker type: {bt}, host: {host}, kafka_port: {kafka_port}, mqtt_port: {mqtt_port}")
+    print(f"Using broker credentials: user={os.environ.get('BROKER_USER')}, password={os.environ.get('BROKER_PASSWORD')}")
     if bt == "kafka":
         os.environ["BROKER_TYPE"] = "kafka"
         os.environ["KAFKA_BOOTSTRAP_SERVERS"] = os.environ.get(
