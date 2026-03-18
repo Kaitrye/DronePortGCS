@@ -13,11 +13,13 @@ services:
     ports:
       - "1883:1883"
       - "9001:9001"
-    # volumes:
-    #   - ./docker/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
     command: mosquitto -c /mosquitto-no-auth.conf
     networks:
-      - droneport_net
+      droneport_net:
+        aliases:
+          - mqtt
+          - broker
+          - mosquitto
 
   orchestrator:
     build:
@@ -108,8 +110,8 @@ services:
     ports:
       - "8084:8084"
     depends_on:
-      - mqtt
-      - redis
+      mqtt:
+        condition: service_healthy
     networks:
       - droneport_net
 

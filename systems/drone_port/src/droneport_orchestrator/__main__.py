@@ -1,40 +1,34 @@
 """Точка входа для DroneportOrchestrator."""
 import os
-import sys
+import signal
 import time
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
-sys.path.insert(0, ROOT_DIR)
-
-from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from broker.bus_factory import create_system_bus
 from systems.drone_port.src.droneport_orchestrator.src.orchestrator import DroneportOrchestrator
 
 
-def main():
-    component_id = os.getenv("COMPONENT_ID", "orchestrator")
-    broker_host = os.getenv("BROKER_HOST", "mqtt")
-    broker_port = int(os.getenv("BROKER_PORT", 1883))
-
-    bus = MQTTSystemBus(
-        broker=broker_host,
-        port=broker_port,
-        client_id=component_id
-    )
-    bus.start()
-
-    orchestrator = DroneportOrchestrator(
+def main() -> None:
+    component_id = os.environ.get("COMPONENT_ID", "orchestrator")
+    bus = create_system_bus(client_id=component_id)
+    component = DroneportOrchestrator(
         component_id=component_id,
         name=component_id,
-        bus=bus,
+        bus=bus
     )
-    
-    orchestrator.start()
-    
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        orchestrator.stop()
+
+    def _shutdown(sig, frame):
+        print(f"\n[{component_id}] Received signal {sig}, shutting down...")
+        component.stop()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
+    component.start()
+    print(f"[{component_id}] Running. Press Ctrl+C to stop.")
+
+    while True:
+        time.sleep(1)
 
 
 if __name__ == "__main__":

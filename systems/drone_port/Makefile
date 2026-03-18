@@ -1,4 +1,4 @@
-.PHONY: help docker-up docker-down docker-build docker-rebuild logs test prepare health-check clean
+.PHONY: help prepare unit-test integration-test tests docker-up docker-down docker-logs
 
 # Variables
 COMPOSE_FILE=docker-compose.yml

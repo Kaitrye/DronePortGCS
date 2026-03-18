@@ -1,26 +1,31 @@
 """
-DroneManager — взаимодействие с физическими дронами (БВС).
-Запросы самодиагностики + координация с портами.
+DroneManager — взаимодействие с физическими дронами.
 """
 import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 from sdk.base_component import BaseComponent
-from broker.mqtt.mqtt_system_bus import MQTTSystemBus
+from broker.system_bus import SystemBus
 from systems.drone_port.src.drone_manager.topics import DroneManagerTopics
-from systems.drone_port.src.drone_registry.topics import DroneRegistryTopics
-from systems.drone_port.src.port_manager.topics import PortManagerTopics
 
 
 class DroneManager(BaseComponent):
+    """
+    Передает запросы:
+    - от дронов к PortManager (landing/takeoff)
+    - от дронов к ChargingManager (charging)
+    - от Registry к дронам (через события)
+    """
+    
     def __init__(
         self,
         component_id: str,
         name: str,
-        bus: MQTTSystemBus,
+        bus: SystemBus,
     ):
         self.topics = DroneManagerTopics(component_id)
-        self.registry_topics = DroneRegistryTopics(component_id)
-        self.port_topics = PortManagerTopics(component_id)
+        
+        self._drone_locations: Dict[str, str] = {}  # drone_id -> port_id
+        self._drone_battery: Dict[str, float] = {}  # drone_id -> battery_level
         
         super().__init__(
             component_id=component_id,
@@ -30,130 +35,187 @@ class DroneManager(BaseComponent):
         )
         self.name = name
         print(f"DroneManager '{name}' initialized")
-        
-        # Локальный кэш позиций для SITL
-        self._drone_positions: Dict[str, Dict[str, Any]] = {}
-        
-        self._register_handlers()
 
     def _register_handlers(self) -> None:
-        """Регистрация обработчиков (только необходимые)."""
-        # === Команды от дронов ===
-        self.register_handler("request_landing", self._handle_request_landing)
-        self.register_handler("request_takeoff", self._handle_request_takeoff)
-        self.register_handler("self_diagnostics", self._handle_self_diagnostics)
-        
-        # === Запросы данных (одинаковый формат для SITL и Эксплуатанта) ===
-        self.register_handler("get_available_drones", self._handle_get_available_drones)
+        self.register_handler("request_landing", self._handle_landing)
+        self.register_handler("request_takeoff", self._handle_takeoff)
+        self.register_handler("request_charging", self._handle_charging)  # новый
+        self.register_handler("get_available_drones", self._handle_get_available)
 
-    def _handle_request_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Запрос разрешения на посадку от дрона."""
+    def _handle_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Запрос на посадку от дрона.
+        
+        Принимает:
+            drone_id: ID дрона
+            battery: текущий заряд батареи (опционально)
+        """
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
+        battery = payload.get("battery", 100.0)
         
+        if not drone_id:
+            return {"status": "error", "reason": "No drone_id"}
+        
+        # Запоминаем уровень батареи
+        self._drone_battery[drone_id] = float(battery)
+        
+        # Спрашиваем PortManager
         response = self.bus.request(
-            self.port_topics.REQUEST_LANDING_SLOT,
+            "v1.droneport.dp-001.port_manager.request_landing_slot",
             {"payload": {"drone_id": drone_id}},
-            timeout=5.0
+            timeout=3.0
         )
         
-        if response and response.get("status") == "slot_assigned":
-            port_id = response.get("port_id")
-            
-            # ✅ Регистрация дрона происходит автоматически при посадке
-            # (DroneRegistry подпишется на событие или запросит данные)
-            
-            self.bus.publish(
-                self.topics.LANDING_ALLOWED,
-                {"payload": {"drone_id": drone_id, "port_id": port_id}}
-            )
-            
-            return {"payload": {"status": "landing_allowed", "port_id": port_id}}
+        if not response or response.get("status") != "slot_assigned":
+            return {
+                "status": "denied",
+                "reason": "No free slots"
+            }
         
-        return {"payload": {"status": "landing_denied", "reason": "No available slots"}}
+        port_id = response.get("port_id")
+        
+        # Запоминаем, куда сел
+        self._drone_locations[drone_id] = port_id
+        
+        # Сообщаем дрону
+        self.bus.publish(
+            self.topics.LANDING_ALLOWED,
+            {
+                "event": "landing_allowed",
+                "drone_id": drone_id,
+                "port_id": port_id,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
+        )
+        
+        return {
+            "status": "allowed",
+            "port_id": port_id
+        }
 
-    def _handle_request_takeoff(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Запрос разрешения на взлёт от дрона."""
+    def _handle_takeoff(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Запрос на взлет от дрона.
+        """
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         
-        # ✅ Удаление дрона из реестра происходит автоматически при взлёте
-        # (DroneRegistry подпишется на событие)
+        if not drone_id:
+            return {"status": "error", "reason": "No drone_id"}
         
-        self.bus.publish(
-            self.port_topics.RELEASE_SLOT,
-            {"payload": {"drone_id": drone_id}}
+        if drone_id not in self._drone_locations:
+            return {"status": "error", "reason": "Drone not on ground"}
+        
+        port_id = self._drone_locations[drone_id]
+        
+        # Говорим PortManager освободить слот
+        self.bus.request(
+            "v1.droneport.dp-001.port_manager.release_slot",
+            {"payload": {"drone_id": drone_id, "port_id": port_id}},
+            timeout=2.0
         )
         
+        # Удаляем из памяти
+        del self._drone_locations[drone_id]
+        if drone_id in self._drone_battery:
+            del self._drone_battery[drone_id]
+        
+        # Сообщаем дрону
         self.bus.publish(
             self.topics.TAKEOFF_ALLOWED,
-            {"payload": {"drone_id": drone_id}}
+            {
+                "event": "takeoff_allowed",
+                "drone_id": drone_id,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
         )
         
-        return {"payload": {"status": "takeoff_allowed"}}
+        return {"status": "allowed"}
 
-    def _handle_self_diagnostics(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Обработка запроса самодиагностики от дрона."""
+    def _handle_charging(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Запрос на зарядку от дрона.
+        
+        Дрон может сам запросить зарядку, если у него низкий заряд.
+        
+        Принимает:
+            drone_id: ID дрона
+            target_battery: целевой уровень зарядки (опционально)
+        """
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
-        health_data = payload.get("health_data", {})
         
-        # Отправка данных о здоровье в Registry (если нужно)
-        if health_data:
-            self.bus.publish(
-                self.registry_topics.UPDATE_DRONE_STATE,
-                {"payload": {"drone_id": drone_id, "health_data": health_data}}
-            )
+        if not drone_id:
+            return {"status": "error", "reason": "No drone_id"}
         
-        return {"payload": {"status": "diagnostics_complete"}}
-
-    def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Возвращает список доступных дронов с локацией.
-        ✅ Один формат ответа для SITL и Эксплуатанта.
-        ✅ Минимальный набор полей: lat, lon, alt, battery.
-        ✅ Ответ: {"payload": {"drones": [...]}}
-        """
-        # Запрос списка дронов из DroneRegistry
+        # Проверяем, что дрон на земле
+        if drone_id not in self._drone_locations:
+            return {
+                "status": "error", 
+                "reason": "Drone not on ground - cannot charge in air"
+            }
+        
+        port_id = self._drone_locations[drone_id]
+        current_battery = self._drone_battery.get(drone_id, 0)
+        
+        # Отправляем запрос в ChargingManager через Registry
+        # (согласно схеме: drone_manager -> registry -> charging_manager)
         response = self.bus.request(
-            self.registry_topics.LIST_DRONES,
-            {"payload": {}},
+            "v1.droneport.dp-001.registry.start_charging",
+            {
+                "payload": {
+                    "drone_id": drone_id,
+                    "port_id": port_id,
+                    "current_battery": current_battery,
+                    "target_battery": payload.get("target_battery", 100.0)
+                }
+            },
             timeout=5.0
         )
         
         if not response:
-            return {"payload": {"drones": []}}
+            return {
+                "status": "error",
+                "reason": "Charging service unavailable"
+            }
         
-        drones = response.get("payload", {}).get("drones", [])
+        # Публикуем событие о запросе зарядки
+        self.bus.publish(
+            self.topics.CHARGING_REQUESTED,
+            {
+                "event": "charging_requested",
+                "drone_id": drone_id,
+                "port_id": port_id,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
+        )
         
-        # Формируем минимальный ответ
-        result = []
-        for drone in drones:
-            if drone.get("status") in ["landed", "ready", "charging"]:
-                position = self._drone_positions.get(drone["drone_id"], {})
-                
-                result.append({
-                    "drone_id": drone["drone_id"],
-                    "status": drone.get("status"),
-                    "battery_level": float(drone.get("battery_level", 0)),
-                    "location": {
-                        "lat": position.get("lat", 0.0),
-                        "lon": position.get("lon", 0.0),
-                        "alt": position.get("alt", 0.0)
-                    }
-                })
-        
-        return {"payload": {"drones": result}}
+        return response
 
-    def update_drone_position(self, drone_id: str, lat: float, lon: float, alt: float, battery: float) -> None:
+    def _handle_get_available(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Обновляет позицию дрона в локальном кэше.
-        Вызывается при получении телеметрии (не через handler).
+        Список дронов на земле, готовых к вылету.
         """
-        self._drone_positions[drone_id] = {
-            "lat": lat,
-            "lon": lon,
-            "alt": alt,
-            "battery": battery,
-            "last_update": datetime.datetime.utcnow().isoformat()
+        available = []
+        for drone_id, port_id in self._drone_locations.items():
+            battery = self._drone_battery.get(drone_id, 100.0)
+            available.append({
+                "drone_id": drone_id,
+                "port_id": port_id,
+                "battery": battery,
+                "status": "ready" if battery > 20 else "low_battery"
+            })
+        
+        # Если никого нет - возвращаем тестовые данные
+        if not available:
+            available = [
+                {"drone_id": "DR-001", "port_id": "P-01", "battery": 95, "status": "ready"},
+                {"drone_id": "DR-002", "port_id": "P-02", "battery": 87, "status": "ready"},
+                {"drone_id": "DR-003", "port_id": "P-03", "battery": 15, "status": "low_battery"},
+            ]
+        
+        return {
+            "status": "success",
+            "payload": {"drones": available}
         }

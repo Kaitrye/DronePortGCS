@@ -1,12 +1,7 @@
 """
 Топики для PortManager.
 """
-from enum import Enum
-
-
 class PortManagerTopics:
-    """Топики компонента управления посадочными площадками."""
-    
     VERSION = "v1"
     SYSTEM_TYPE = "droneport"
     COMPONENT = "port_manager"
@@ -26,7 +21,7 @@ class PortManagerTopics:
         self.SLOT_RELEASED = f"{self.base_topic}.events.slot_released"
         self.SLOT_ASSIGNED = f"{self.base_topic}.events.slot_assigned"
         
-        # === Actions для BaseComponent ===
+        # === Actions ===
         self.ACTIONS = {
             "reserve_slot": self.RESERVE_SLOT,
             "release_slot": self.RELEASE_SLOT,
@@ -35,5 +30,4 @@ class PortManagerTopics:
         }
     
     def get_topic_for_action(self, action: str) -> str:
-        """Получить топик для действия."""
         return self.ACTIONS.get(action, f"{self.base_topic}.{action}")

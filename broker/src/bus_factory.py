@@ -31,7 +31,7 @@ def create_system_bus(
         if config and "broker" in config and "type" in config["broker"]:
             bus_type = config["broker"]["type"]
         else:
-            bus_type = os.getenv("BROKER_TYPE", "kafka")
+            bus_type = os.getenv("BROKER_TYPE", "mqtt")
 
     bus_type = bus_type.lower()
 
