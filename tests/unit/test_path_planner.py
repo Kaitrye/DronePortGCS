@@ -65,6 +65,16 @@ def test_handle_path_plan_saves_mission_and_returns_route(component, mock_bus):
         ]
     )
     assert result["mission_id"] == "m-plan"
+    assert isinstance(result["waypoints"], list)
+    assert len(result["waypoints"]) == 7
+    assert result["waypoints"][0] == normalized_start
+    assert result["waypoints"][3] == normalized_end
+    assert result["waypoints"][-1] == normalized_start
+
+    # Корректность маршрута относительно текущей реализации (связка handler->builder)
+    expected_waypoints = component._build_stub_route(normalized_start, normalized_end)
+    expected_signature = _sha256_signature(expected_waypoints)
+
     assert result["waypoints"] == expected_waypoints
     assert mock_bus.publish.call_args.args[0] == ComponentTopics.GCS_MISSION_STORE
     saved_message = mock_bus.publish.call_args.args[1]
@@ -105,7 +115,60 @@ def test_handle_path_plan_sets_timestamps_on_saved_mission(component, mock_bus):
         }
     )
 
+    # publish должен быть ровно один и с корреляцией
+    assert len(calls) == 1
+    (target_topic, action, payload), kwargs = calls[0]
+    assert target_topic == ComponentTopics.GCS_MISSION_STORE
+    assert action == "store.save_mission"
+    assert kwargs["correlation_id"] == "corr-time"
+
     saved_mission = mock_bus.publish.call_args.args[1]["payload"]["mission"]
     assert saved_mission["created_at"]
     assert saved_mission["updated_at"]
     assert saved_mission["assigned_drone"] is None
+
+    created_at = _parse_iso_dt(saved_mission["created_at"])
+    updated_at = _parse_iso_dt(saved_mission["updated_at"])
+
+    # фиксируем текущее поведение — timestamps выставляются одним now
+    assert updated_at == created_at
+
+def test_handle_path_plan_raises_when_payload_missing(component):
+    component.publish_to_other_system = pytest.fail  # publish не должен вызываться
+    with pytest.raises(Exception):
+        component._handle_path_plan({})  # payload отсутствует
+
+
+def test_handle_path_plan_raises_when_task_missing(component):
+    component.publish_to_other_system = pytest.fail
+    with pytest.raises(Exception):
+        component._handle_path_plan({"payload": {"mission_id": "m-1"}})  # task отсутствует
+
+
+def test_handle_path_plan_raises_when_end_point_missing(component):
+    component.publish_to_other_system = pytest.fail
+    with pytest.raises(Exception):
+        component._handle_path_plan(
+            {
+                "payload": {
+                    "mission_id": "m-2",
+                    "task": {"start_point": {"lat": 1.0, "lon": 2.0, "alt": 3.0}},
+                }
+            }
+        )
+
+
+def test_handle_path_plan_raises_when_coordinates_invalid(component):
+    component.publish_to_other_system = pytest.fail
+    with pytest.raises(Exception):
+        component._handle_path_plan(
+            {
+                "payload": {
+                    "mission_id": "m-3",
+                    "task": {
+                        "start_point": {"lat": "bad", "lon": 2.0, "alt": 3.0},
+                        "end_point": {"lat": 4.0, "lon": 5.0, "alt": 6.0},
+                    },
+                }
+            }
+        )
