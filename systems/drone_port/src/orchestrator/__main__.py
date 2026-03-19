@@ -1,23 +1,19 @@
-"""Точка входа для DroneRegistry."""
+"""Точка входа для Orchestrator."""
 import os
 import signal
 import time
 
 from broker.bus_factory import create_system_bus
-from systems.drone_port.src.drone_registry.src.drone_registry import DroneRegistry
+from systems.drone_port.src.droneport_orchestrator.src.orchestrator import Orchestrator
 
 
 def main() -> None:
-    component_id = os.environ.get("COMPONENT_ID", "drone_registry")
-    redis_host = os.environ.get("REDIS_HOST", "redis")
-    redis_port = int(os.environ.get("REDIS_PORT", "6379"))
+    component_id = os.environ.get("COMPONENT_ID", "orchestrator")
     bus = create_system_bus(client_id=component_id)
-    component = DroneRegistry(
+    component = Orchestrator(
         component_id=component_id,
         name=component_id,
-        bus=bus,
-        redis_host=redis_host,
-        redis_port=redis_port,
+        bus=bus
     )
 
     def _shutdown(sig, frame):

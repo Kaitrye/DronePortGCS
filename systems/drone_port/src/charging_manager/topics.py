@@ -1,26 +1,20 @@
-"""
-Топики для ChargingManager.
-"""
-class ChargingManagerTopics:    
-    VERSION = "v1"
-    SYSTEM_TYPE = "droneport"
-    COMPONENT = "charging_manager"
-    
-    def __init__(self, system_id: str = "dp-001"):
-        self.system_id = system_id
-        self.base_topic = f"{self.VERSION}.{self.SYSTEM_TYPE}.{self.system_id}.{self.COMPONENT}"
-        
-        # === Команды (входящие) 
-        self.START_CHARGING = f"{self.base_topic}.start_charging"
-        
-        # === События (исходящие) ===
-        self.CHARGING_STARTED = f"{self.base_topic}.events.charging_started"
-        self.CHARGING_COMPLETED = f"{self.base_topic}.events.charging_completed"
-        
-        # === Actions для BaseComponent ===
-        self.ACTIONS = {
-            "start_charging": self.START_CHARGING,
-        }
-    
-    def get_topic_for_action(self, action: str) -> str:
-        return self.ACTIONS.get(action, f"{self.base_topic}.{action}")
+"""Топики и actions для ChargingManager в составе drone_port"""
+
+from systems.drone_port.src.topic_naming import build_component_topic
+
+
+class ComponentTopics:
+    CHARGING_MANAGER = build_component_topic("charging_manager")
+    DRONE_REGISTRY = build_component_topic("registry")
+
+    @classmethod
+    def all(cls) -> list:
+        return [
+            cls.CHARGING_MANAGER,
+            cls.DRONE_REGISTRY,
+        ]
+
+
+class ChargingManagerActions:
+    START_CHARGING = "start_charging"
+    GET_CHARGING_STATUS = "get_charging_status"

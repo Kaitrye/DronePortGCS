@@ -1,33 +1,25 @@
-"""
-Топики для DroneRegistry.
-"""
-class DroneRegistryTopics:
-    """Топики компонента реестра дронов."""
-    
-    VERSION = "v1"
-    SYSTEM_TYPE = "droneport"
-    COMPONENT = "registry"
-    
-    def __init__(self, system_id: str = "dp-001"):
-        self.system_id = system_id
-        self.base_topic = f"{self.VERSION}.{self.SYSTEM_TYPE}.{self.system_id}.{self.COMPONENT}"
-        
-        # === Команды (входящие) ===
-        self.REGISTER_DRONE = f"{self.base_topic}.register_drone"
-        self.LIST_DRONES = f"{self.base_topic}.list_drones"
-        self.GET_AGGREGATED_STATUS = f"{self.base_topic}.get_aggregated_status"
-        self.START_CHARGING = f"{self.base_topic}.start_charging"
-        
-        # === События (исходящие) ===
-        self.DRONE_REGISTERED = f"{self.base_topic}.events.registered"
-        
-        # === Actions для BaseComponent ===
-        self.ACTIONS = {
-            "register_drone": self.REGISTER_DRONE,
-            "list_drones": self.LIST_DRONES,
-            "get_aggregated_status": self.GET_AGGREGATED_STATUS,
-            "start_charging": self.START_CHARGING,
-        }
-    
-    def get_topic_for_action(self, action: str) -> str:
-        return self.ACTIONS.get(action, f"{self.base_topic}.{action}")
+"""Топики и actions для DroneRegistry в составе drone_port."""
+
+from systems.drone_port.src.topic_naming import build_component_topic
+
+
+class ComponentTopics:
+    DRONE_REGISTRY = build_component_topic("registry")
+    DRONE_MANAGER = build_component_topic("drone_manager")
+    CHARGING_MANAGER = build_component_topic("charging_manager")
+
+    @classmethod
+    def all(cls) -> list:
+        return [
+            cls.DRONE_MANAGER,
+            cls.DRONE_REGISTRY,
+            cls.CHARGING_MANAGER,
+        ]
+
+
+class DroneRegistryActions:
+    REGISTER_DRONE = "register_drone"
+    GET_AVAILABLE_DRONES = "get_available_drones"
+    DELETE_DRONE = "delete_drone"
+    CHARGING_STARTED = "charging_started"
+    UPDATE_BATTERY = "update_battery"

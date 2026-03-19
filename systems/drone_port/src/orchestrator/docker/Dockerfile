@@ -12,6 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONPATH=/app
-ENV COMPONENT_ID=droneport_orchestrator
+ENV COMPONENT_ID=orchestrator
 
-CMD ["python", "-m", "systems.drone_port.src.droneport_orchestrator"]
+CMD ["python", "-m", "systems.drone_port.src.orchestrator"]

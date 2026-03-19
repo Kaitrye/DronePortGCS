@@ -1,112 +1,51 @@
-.PHONY: help prepare unit-test integration-test tests docker-up docker-down docker-logs
+.PHONY: help prepare unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-clean
 
-# Variables
-COMPOSE_FILE=docker-compose.yml
-ENV_FILE=.env
-PROJECT_NAME=droneport
+PIPENV_PIPFILE = ../../config/Pipfile
+PYTEST_CONFIG = ../../config/pyproject.toml
+GENERATED = .generated
+DOCKER_COMPOSE = docker compose -f $(GENERATED)/docker-compose.yml --env-file $(GENERATED)/.env
 
 help:
-	@echo "Droneport Docker Commands:"
-	@echo "  make docker-up        - Start all services"
-	@echo "  make docker-down      - Stop all services"
-	@echo "  make docker-build     - Build all containers"
-	@echo "  make docker-rebuild   - Rebuild and restart"
-	@echo "  make logs             - View all logs"
-	@echo "  make logs-orch        - View orchestrator logs"
-	@echo "  make logs-drone       - View drone_manager logs"
-	@echo "  make logs-registry    - View drone_registry logs"
-	@echo "  make logs-port        - View port_manager logs"
-	@echo "  make logs-charging    - View charging_manager logs"
-	@echo "  make logs-diagnostics - View diagnostics_manager logs"
-	@echo "  make test             - Run all tests"
-	@echo "  make test-unit        - Run unit tests"
-	@echo "  make test-integration - Run integration tests"
-	@echo "  make prepare          - Prepare environment"
-	@echo "  make health-check     - Check service health"
-	@echo "  make clean            - Clean up containers and volumes"
+	@echo "make prepare           - Собрать docker-compose + .env из компонентов"
+	@echo "make docker-up         - Запустить систему (prepare + docker compose up)"
+	@echo "make docker-down       - Остановить систему"
+	@echo "make docker-logs       - Логи"
+	@echo "make docker-clean      - Очистка docker ресурсов системы"
+	@echo "make unit-test         - Проверка импортов/синтаксиса компонентов DronePort"
+	@echo "make integration-test  - Smoke интеграция (подъём DronePort-стека)"
+	@echo "make integration-test-run - Запустить integration pytest для DronePort"
+	@echo "make tests             - Все тесты"
 
 prepare:
-	@echo "Preparing environment..."
-	@if [ ! -f $(ENV_FILE) ]; then \
-		cp example.env $(ENV_FILE); \
-		echo "Created .env from example.env"; \
-	fi
-	@pip install -r requirements.txt
-	@echo "Environment ready!"
+	@cd ../.. && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python scripts/prepare_system.py systems/drone_port
 
-docker-up:
-	@echo "Starting Droneport services..."
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d
-	@echo "Services started. Check status with: docker-compose ps"
+docker-up: prepare
+	@set -a && . $(GENERATED)/.env && set +a && \
+		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-mqtt} up -d --build
 
 docker-down:
-	@echo "Stopping Droneport services..."
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) down
-	@echo "Services stopped"
+	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null
+	-$(DOCKER_COMPOSE) --profile mqtt down 2>/dev/null
 
-docker-build:
-	@echo "Building containers..."
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) build
-	@echo "Build complete"
+docker-logs:
+	@set -a && . $(GENERATED)/.env && set +a && \
+		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-mqtt} logs -f
 
-docker-rebuild: docker-down docker-build docker-up
-	@echo "Rebuild complete"
+docker-clean:
+	-$(DOCKER_COMPOSE) --profile kafka down -v --rmi local 2>/dev/null
+	-$(DOCKER_COMPOSE) --profile mqtt down -v --rmi local 2>/dev/null
 
-logs:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f
+unit-test:
+	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python -m compileall src -q
 
-logs-orch:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f orchestrator
+integration-test: docker-up
+	@$(MAKE) integration-test-run
+	-$(MAKE) docker-down
 
-logs-drone:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f drone_manager
+integration-test-run:
+	@set -a && . $(GENERATED)/.env && set +a && \
+		PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
+		systems/drone_port/tests/ \
+		-v
 
-logs-registry:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f drone_registry
-
-logs-port:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f port_manager
-
-logs-charging:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f charging_manager
-
-logs-diagnostics:
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) logs -f diagnostics_manager
-
-test:
-	@echo "Running all tests..."
-	@pip install -r requirements.txt
-	@pytest tests/ -v --cov=src --cov-report=html
-	@echo "Tests complete. Coverage report in htmlcov/index.html"
-
-test-unit:
-	@echo "Running unit tests..."
-	@pytest tests/unit -v --cov=src --cov-report=html
-
-test-integration:
-	@echo "Running integration tests..."
-	@pytest tests/integration -v --cov=src --cov-report=html
-
-health-check:
-	@echo "Checking service health..."
-	@curl -f http://localhost:8080/health || echo "Orchestrator: DOWN"
-	@curl -f http://localhost:8081/health || echo "DroneManager: DOWN"
-	@curl -f http://localhost:8082/health || echo "DroneRegistry: DOWN"
-	@curl -f http://localhost:8083/health || echo "PortManager: DOWN"
-	@curl -f http://localhost:8084/health || echo "ChargingManager: DOWN"
-	@curl -f http://localhost:8085/health || echo "DiagnosticsManager: DOWN"
-
-redis-cli:
-	@docker exec -it droneport_redis redis-cli
-
-clean:
-	@echo "Cleaning up..."
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) down -v
-	@docker system prune -f
-	@echo "Cleanup complete"
-
-# SITL simulation profile
-docker-up-sitl:
-	@echo "Starting Droneport with SITL simulator..."
-	@docker-compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile simulation up -d
-	@echo "SITL started on ports 5760/udp and 14550/udp"
+tests: unit-test integration-test

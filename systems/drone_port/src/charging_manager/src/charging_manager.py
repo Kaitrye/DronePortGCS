@@ -2,10 +2,13 @@
 ChargingManager — логика зарядки дронов.
 """
 import datetime
+import threading
+import time
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
-from systems.drone_port.src.charging_manager.topics import ChargingManagerTopics
+from systems.drone_port.src.charging_manager.topics import ComponentTopics
+from systems.drone_port.src.drone_registry.topics import DroneRegistryActions
 
 
 class ChargingManager(BaseComponent):
@@ -15,19 +18,36 @@ class ChargingManager(BaseComponent):
         name: str,
         bus: SystemBus,
     ):
-        self.topics = ChargingManagerTopics(component_id)
-        
         super().__init__(
             component_id=component_id,
             component_type="droneport",
-            topic=self.topics.base_topic,
+            topic=ComponentTopics.CHARGING_MANAGER,
             bus=bus,
         )
         self.name = name
-        print(f"ChargingManager '{name}' initialized")
 
     def _register_handlers(self) -> None:
         self.register_handler("start_charging", self._handle_start_charging)
+
+    def _simulate_charging(self, drone_id: str, battery: float) -> None:
+        current_battery = max(0.0, min(float(battery), 100.0))
+
+        while current_battery < 100.0:
+            step = min(10.0, 100.0 - current_battery)
+            time.sleep(step)
+            current_battery += step
+
+            self.bus.publish(
+                ComponentTopics.DRONE_REGISTRY,
+                {
+                    "action": DroneRegistryActions.UPDATE_BATTERY,
+                    "payload": {
+                        "drone_id": drone_id,
+                        "battery": current_battery,
+                    },
+                    "sender": self.component_id,
+                }
+            )
 
     def _handle_start_charging(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -35,25 +55,23 @@ class ChargingManager(BaseComponent):
         """
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
-        
-        if not drone_id:
-            return {
-                "status": "error",
-                "reason": "Missing drone_id"
-            }
-        
-        # Публикуем событие о начале зарядки
-        # DroneRegistry подписан и обновит статус
+        battery = payload.get("battery", 0.0)
+
         self.bus.publish(
-            self.topics.CHARGING_STARTED,
+            ComponentTopics.DRONE_REGISTRY,
             {
-                "event": "charging_started",
-                "drone_id": drone_id,
-                "timestamp": datetime.datetime.utcnow().isoformat()
+                "action": DroneRegistryActions.CHARGING_STARTED,
+                "payload": {
+                    "drone_id": drone_id,
+                },
+                "sender": self.component_id,
             }
         )
-        
-        return {
-            "status": "started",
-            "drone_id": drone_id
-        }
+
+        threading.Thread(
+            target=self._simulate_charging,
+            args=(drone_id, battery),
+            daemon=True,
+        ).start()
+
+        return None

@@ -20,7 +20,7 @@ System_Ext(drones, "Дроны (БВС)", "Физические воздушны
 ' === Droneport boundary ===
 System_Boundary(droneport, "Дронопорт") {
     
-    Container(orchestrator, "DroneportOrchestrator", "Python", "Передача данных между дронопортом и Эксплуатантом.", $tags="controlled")
+    Container(orchestrator, "Orchestrator", "Python", "Передача данных между дронопортом и Эксплуатантом.", $tags="controlled")
     Container(drone_mgr, "DroneManager", "Python", "запросы о самодиагностике + взаимодейтсвие с портами", $tags="controlled")
     Container(drone_reg, "DroneRegistry", "Python", "Хранилище зарегестрированных дронов", $tags="controlled")
 
