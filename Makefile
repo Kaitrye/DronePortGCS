@@ -1,4 +1,4 @@
-.PHONY: help init unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down
+.PHONY: help init unit-test unit-test-with-coverage integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean dummy-system-up dummy-system-down gcs-system-up gcs-system-down
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
 LOAD_ENV = set -a && . docker/.env && set +a
@@ -36,10 +36,21 @@ unit-test:
 		tests/unit/ \
 		components/dummy_component/tests/ \
 		systems/gcs/tests/unit/ \
-		systems/drone_port/tests/unit/ \
 		-v
 
-integration-test: docker-up gcs-system-up drone-port-system-up
+unit-test-with-coverage:
+	@mkdir -p artifacts/coverage-html
+	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
+		tests/unit/ \
+		components/dummy_component/tests/ \
+		systems/dummy_system/tests/test_dummy_unit.py \
+		systems/gcs/tests/unit/ \
+		--cov=systems/gcs/src \
+		--cov-report=html:artifacts/coverage-html \
+		--cov-report=term-missing \
+		-v
+
+integration-test: docker-up dummy-system-up gcs-system-up
 	@$(MAKE) integration-test-run
 	-$(MAKE) drone-port-system-down
 	-$(MAKE) gcs-system-down
