@@ -4,7 +4,7 @@ import signal
 import time
 
 from broker.bus_factory import create_system_bus
-from systems.drone_port.src.droneport_orchestrator.src.orchestrator import Orchestrator
+from systems.drone_port.src.orchestrator.src.orchestrator import Orchestrator
 
 
 def main() -> None:

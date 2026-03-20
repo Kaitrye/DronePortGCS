@@ -17,7 +17,7 @@ help:
 	@echo "make tests             - Все тесты"
 
 prepare:
-	@cd ../.. && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python scripts/prepare_system.py systems/drone_port
+	@cd ../.. && PIPENV_PIPFILE=config/Pipfile pipenv run python scripts/prepare_system.py systems/drone_port
 
 docker-up: prepare
 	@set -a && . $(GENERATED)/.env && set +a && \

@@ -35,7 +35,7 @@ services:
   orchestrator:
     build:
       context: ../..
-      dockerfile: systems/drone_port/src/droneport_orchestrator/docker/Dockerfile
+      dockerfile: systems/drone_port/src/orchestrator/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=orchestrator

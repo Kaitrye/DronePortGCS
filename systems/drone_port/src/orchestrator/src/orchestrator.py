@@ -5,8 +5,8 @@ import datetime
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.system_bus import SystemBus
-from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics, DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
+from systems.drone_port.src.orchestrator.topics import OrchestratorActions
 from systems.drone_port.src.orchestrator.topics import ComponentTopics as OrchestratorTopics
 
 
@@ -30,13 +30,13 @@ class Orchestrator(BaseComponent):
         self.name = name
 
     def _register_handlers(self) -> None:
-        self.register_handler(DroneManagerActions.GET_AVAILABLE_DRONES, self._handle_get_available_drones)
+        self.register_handler(OrchestratorActions.GET_AVAILABLE_DRONES, self._handle_get_available_drones)
 
     def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
         response = self.bus.request(
-            DroneManagerTopics.DRONE_REGISTRY,
+            RegistryTopics.DRONE_REGISTRY,
             {
-                "action": DroneManagerActions.GET_AVAILABLE_DRONES,
+                "action": DroneRegistryActions.GET_AVAILABLE_DRONES,
                 "payload": {},
             },
             timeout=5.0,
@@ -44,7 +44,7 @@ class Orchestrator(BaseComponent):
 
         if response and response.get("success"):
             return {
-                "drones": response.get("drones", []),
+                "drones": response.get("payload", {}).get("drones", []),
                 "from": self.component_id,
             }
 

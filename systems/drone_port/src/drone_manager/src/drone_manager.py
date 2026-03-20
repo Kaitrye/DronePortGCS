@@ -7,6 +7,7 @@ from sdk.base_component import BaseComponent
 from broker.system_bus import SystemBus
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics, DroneManagerActions
+from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
 
 
@@ -29,6 +30,7 @@ class DroneManager(BaseComponent):
             topic=DroneManagerTopics.DRONE_MANAGER,
             bus=bus,
         )
+        self._drone_battery = {}
         self.name = name
 
     def _register_handlers(self) -> None:
@@ -47,7 +49,7 @@ class DroneManager(BaseComponent):
         response = self.bus.request(
             PortTopics.PORT_MANAGER,
             {
-                "action": PortManagerActions.REQUEST_LANDING_SLOT,
+                "action": PortManagerActions.REQUEST_LANDING,
                 "payload": {
                     "drone_id": drone_id
                 },
@@ -56,9 +58,9 @@ class DroneManager(BaseComponent):
             timeout=3.0
         )
 
-        if response and response.get("success"):
+        if response and response.get("port_id"):
             self.bus.publish(
-                DroneManagerTopics.DRONE_REGISTRY,
+                RegistryTopics.DRONE_REGISTRY,
                 {
                     "action": DroneRegistryActions.REGISTER_DRONE,
                     "payload": {
@@ -102,7 +104,7 @@ class DroneManager(BaseComponent):
         )
 
         response = self.bus.request(
-            DroneRegistryTopics.DRONE_REGISTRY,
+            RegistryTopics.DRONE_REGISTRY,
             {
                 "action": DroneRegistryActions.GET_DRONE,
                 "payload": {
@@ -113,11 +115,11 @@ class DroneManager(BaseComponent):
         )
 
         if response and response.get("success"):
-            battery = response.get("battery")
-            port_id = response.get("port_id")
+            battery = float(response.get("battery", 0.0))
+            port_id = response.get("port_id") or (drone_port or {}).get("port_id")
 
             if battery > 80.0:
-                port_response = self.bus.request(
+                self.bus.publish(
                     PortTopics.PORT_MANAGER,
                     {
                         "action": PortManagerActions.FREE_SLOT,
@@ -137,8 +139,8 @@ class DroneManager(BaseComponent):
                             "drone_id": drone_id,
                             "port_id": port_id,
                             "port_coordinates": {
-                                "lat": port_response.get("lat"),
-                                "lon": port_response.get("lon"),
+                                "lat": (drone_port or {}).get("lat"),
+                                "lon": (drone_port or {}).get("lon"),
                             },
                             "battery": battery,
                         },
@@ -148,6 +150,11 @@ class DroneManager(BaseComponent):
 
                 return {
                     "battery": battery,
+                    "port_id": port_id,
+                    "port_coordinates": {
+                        "lat": (drone_port or {}).get("lat"),
+                        "lon": (drone_port or {}).get("lon"),
+                    },
                     "from": self.component_id,
                 }
 

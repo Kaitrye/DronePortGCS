@@ -19,6 +19,7 @@ class ComponentTopics:
 
 class DroneRegistryActions:
     REGISTER_DRONE = "register_drone"
+    GET_DRONE = "get_drone"
     GET_AVAILABLE_DRONES = "get_available_drones"
     DELETE_DRONE = "delete_drone"
     CHARGING_STARTED = "charging_started"

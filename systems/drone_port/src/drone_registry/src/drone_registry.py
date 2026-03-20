@@ -36,6 +36,7 @@ class DroneRegistry(BaseComponent):
 
     def _register_handlers(self) -> None:
         self.register_handler(DroneRegistryActions.REGISTER_DRONE, self._handle_register_drone)
+        self.register_handler(DroneRegistryActions.GET_DRONE, self._handle_get_drone)
         self.register_handler(DroneRegistryActions.GET_AVAILABLE_DRONES, self._handle_get_available_drones)
         self.register_handler(DroneRegistryActions.DELETE_DRONE, self._handle_delete_drone)
         self.register_handler(DroneRegistryActions.CHARGING_STARTED, self._handle_charging_started)
@@ -72,6 +73,23 @@ class DroneRegistry(BaseComponent):
         return {
             "drones": drones,
             "from": self.component_id
+        }
+
+    def _handle_get_drone(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        payload = message.get("payload")
+        drone_id = payload.get("drone_id")
+        drone = self.redis.hgetall(f"drone:{drone_id}")
+
+        if not drone:
+            return {
+                "error": "Drone not found",
+                "from": self.component_id,
+            }
+
+        return {
+            **drone,
+            "success": True,
+            "from": self.component_id,
         }
 
     def _handle_delete_drone(self, message: Dict[str, Any]) -> None:
