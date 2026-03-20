@@ -1,0 +1,79 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Дронопорт — C4 Контейнерная диаграмма (с Orchestrator)
+
+Boundary(operator, "Эксплуатант", "Автоматизированная система НУС")
+
+Boundary(nus_boundary, "НУС (Автоматизированная система)") {
+  Container(api_layer, "API Layer", "HTTP/gRPC", "Внешний интерфейс НУС")
+  Container(mission_system, "MissionSystem", "Python", "Создание/запуск миссий")
+  Container(orchestrator_nus, "OrchestratorSystem", "Python", "Координация выполнения")
+  Container(robot_system, "RobotSystem", "Python", "Команды БВС и интеграция с Дронопортом")
+}
+
+Boundary(droneport_boundary, "Дронопорт") {
+  Container(droneport_orchestrator, "Orchestrator", "Python", "Оркестратор дронопорта. Принимает команды от RobotSystem через SystemBus. Координирует компоненты.")
+
+  Container(port_manager, "PortManager", "Python Component", "Резервирование и освобождение посадочных площадок. Валидация совместимости дронов.")
+  Container(power_health, "PowerAndHealthManager", "Python Component", "Зарядка + пост-посадочная диагностика + опрос телеметрии дронов.")
+  Container(drone_registry, "DroneRegistry", "Python Component", "Хранение состояния дронов (ID, статус, батарея, порт, safety_target).")
+  Container(state_store, "StateStore", "Python Component", "Абстракция над Redis для хранения данных.")
+  
+  Container_Ext(telemetry_client, "DroneTelemetryClient", "Python Interface", "Интерфейс для опроса систем самодиагностики дронов (MAVLink/ArduPilot).")
+
+  Rel(droneport_orchestrator, port_manager, "использует", "координация")
+  Rel(droneport_orchestrator, power_health, "использует", "координация")
+  Rel(droneport_orchestrator, drone_registry, "использует", "координация")
+  Rel(droneport_orchestrator, state_store, "использует", "агрегация данных")
+
+  Rel(port_manager, state_store, "сохраняет/читает данные", "Redis")
+  Rel(power_health, state_store, "сохраняет/читает данные", "Redis")
+  Rel(drone_registry, state_store, "сохраняет/читает данные", "Redis")
+  
+  Rel(power_health, telemetry_client, "опрашивает", "get_self_diagnostics()")
+}
+
+System(system_bus, "SystemBus (Kafka/MQTT)", "Брокер сообщений для межсистемного взаимодействия")
+SystemDb(redis_db, "Redis", "In-memory storage", "Хранение состояния дронов и портов")
+
+' === Внешние физические системы ===
+System_Ext(drones, "Дроны (БВС)", "Физические агродроны (воздушные платформы)")
+
+Rel(operator, api_layer, "Постановка задач, отмена, мониторинг")
+Rel(api_layer, mission_system, "task.submit / cancel")
+Rel(mission_system, orchestrator_nus, "orchestrator.plan / execute")
+Rel(orchestrator_nus, robot_system, "robot.* команды")
+
+Rel(robot_system, system_bus, "publish/request\n(reserve_slots, charge_to_threshold и др.)")
+Rel(system_bus, droneport_orchestrator, "доставляет команды")
+Rel(droneport_orchestrator, system_bus, "отправляет ответы и события")
+
+Rel(droneport_orchestrator, redis_db, "читает агрегированные данные", "для отчётов эксплуатанту")
+Rel(state_store, redis_db, "прямой доступ", "CRUD операции")
+
+' === Взаимодействие с физическими дронами ===
+Rel(drones, droneport_orchestrator, "подлетает → посадка", "телеметрия: GPS, battery, status")
+Rel(droneport_orchestrator, drones, "разрешает посадку / выдаёт коридор", "команда: land_at_port_id")
+Rel(drones, droneport_orchestrator, "улетает ← взлёт", "телеметрия: takeoff_confirmed")
+Rel(droneport_orchestrator, drones, "разрешает взлёт / открывает коридор", "команда: takeoff_allowed")
+
+Rel(drones, telemetry_client, "опрос самодиагностики", "MAVLink/ArduPilot protocol")
+Rel(telemetry_client, drones, "получает health report", "motors, GPS, sensors, temp")
+
+
+note right of droneport_boundary
+  Дронопорт — автоматизированная система.
+  
+  Ключевые изменения:
+  • Выделен Orchestrator как отдельный компонент
+  • Добавлен DroneTelemetryClient для опроса дронов
+  • StateStore явно использует Redis
+  • Orchestrator агрегирует данные для отчётов эксплуатанту
+  
+  Взаимодействие с физическими дронами происходит:
+  • через радиоканал (телеметрия и команды),
+  • по стандартным протоколам (MAVLink, ArduPilot/PX4).
+end note
+
+@enduml

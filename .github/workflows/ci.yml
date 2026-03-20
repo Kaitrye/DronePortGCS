@@ -71,7 +71,6 @@ jobs:
         docker logs drones-orchestrator-1 || true
         docker logs drones-path_planner-1 || true
         docker logs drones-drone_manager-1 || true
-        docker logs --tail 100 mqtt || true
 
     - name: Docker down
       if: always()

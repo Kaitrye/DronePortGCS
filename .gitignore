@@ -9,6 +9,7 @@ __pycache__
 *.vscode
 *.pytest_cache
 *.pyc
+*.pyc
 .generated/
 
 .coverage
