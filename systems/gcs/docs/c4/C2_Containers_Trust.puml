@@ -1,0 +1,56 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+LAYOUT_LEFT_RIGHT()
+
+' Assurance level styling for elements (3 colors only).
+AddElementTag("trusted", $bgColor="#E8F5E9", $fontColor="#1B5E20", $borderColor="#2E7D32", $legendText="Высокая проверенность тестами (>70%)")
+AddElementTag("controlled", $bgColor="#FFF8E1", $fontColor="#E65100", $borderColor="#FB8C00", $legendText="Базовая проверенность тестами")
+AddElementTag("untrusted", $bgColor="#FFEBEE", $fontColor="#B71C1C", $borderColor="#C62828", $legendText="Низкая проверенность/внешняя среда")
+
+' Relation styling (2 colors only).
+AddRelTag("trusted_flow", $textColor="#1B5E20", $lineColor="#2E7D32", $legendText="Поток высокоцелостных данных")
+AddRelTag("external_flow", $textColor="#B71C1C", $lineColor="#C62828", $legendText="Поток низкоцелостных данных")
+
+System_Ext(operator_system, "Эксплуатант", $tags="untrusted")
+System_Ext(drone, "Дроны", $tags="untrusted")
+
+System_Boundary(gcs, "НУС") {
+  Container(orchestrator, "Orchestrator", "Распределение обязанностей между компонентами", $tags="controlled")
+  Container(mission, "MissionManager", "Конвертация маршрута в WPL, генерация подписи", $tags="trusted")
+  Container(fleet, "GroupManager", "Формирование групп и подмиссий", $tags="untrusted")
+  Container(drone_manager, "DroneManager", "Загрузка миссий на дронов и подача команд на старт", $tags="trusted")
+  Container(telemetry, "TelemetryManager", "Прием телеметрии и проверка подписей", $tags="untrusted")
+  Container(store_manager, "StoreManager", "Обертка над Redis с API для других сервисов", $tags="controlled")
+}
+
+ContainerDb(redis, "Redis", "State storage", "mission, submission, group, drone state, telemetry", $tags="untrusted")
+
+note right of fleet
+  GroupManager:
+  - формирует группу из выбранных дронов
+  - делит WPL миссии на подмиссии поровну по точкам
+  - сохраняет подмиссии с той же подписью, что у исходной миссии
+  - возвращает group_id и массив submission_id
+end note
+
+Rel(operator_system, orchestrator, "task.submit / task.assign / task.start(group_id)", $tags="external_flow")
+
+Rel(orchestrator, mission, "mission.prepare", $tags="trusted_flow")
+Rel(orchestrator, fleet, "group.create", $tags="trusted_flow")
+Rel(orchestrator, drone_manager, "mission.upload / mission.start", $tags="trusted_flow")
+Rel(orchestrator, store_manager, "drone.list_available / drone.status_update", $tags="trusted_flow")
+Rel(store_manager, orchestrator, "group.get_drones", $tags="trusted_flow")
+
+Rel(mission, store_manager, "mission.save (signed)", $tags="trusted_flow")
+Rel(fleet, store_manager, "group.create / submission.save", $tags="trusted_flow")
+Rel(store_manager, fleet, "mission.get", $tags="trusted_flow")
+Rel(telemetry, store_manager, "telemetry.save", $tags="trusted_flow")
+Rel(store_manager, drone_manager, "submission.get", $tags="trusted_flow")
+Rel(drone, telemetry, "telemetry.push (signed)", $tags="external_flow")
+
+Rel(store_manager, redis, "прямые запросы", $tags="trusted_flow")
+
+Rel(drone_manager, drone, "mission.upload / mission.start", $tags="trusted_flow")
+
+SHOW_LEGEND()
+@enduml
