@@ -62,15 +62,22 @@ class MissionStoreComponent(BaseRedisStoreComponent):
         }
 
     def _handle_update_mission(self, message: Dict[str, Any]) -> None:
-        payload = message.get("payload")
+        payload = message.get("payload") or {}
         mission_id = payload.get("mission_id")
         fields = payload.get("fields")
 
-        mission = self._read_mission(mission_id)
+        if not mission_id:
+            return
 
-        mission.update(fields)
+        mission = self._read_mission(mission_id)
+        if mission is None:
+            return
+
+        # Отсутствие ключа fields даёт None - dict.update(None) вызывает TypeError
+        mission.update(fields or {})
         mission["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         self._write_mission(mission)
 
         return None
+
