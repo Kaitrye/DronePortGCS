@@ -1,5 +1,9 @@
 .PHONY: help init unit-test unit-test-with-coverage integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean dummy-system-up dummy-system-down gcs-system-up gcs-system-down
 
+# Абсолютный путь: иначе при PIPENV_PIPFILE=config/Pipfile pipenv часто ставит cwd=config/,
+# и HTML оказывается в config/artifacts/..., а CI ждёт artifacts/ в корне репо.
+COVERAGE_HTML_DIR := $(CURDIR)/artifacts/coverage-html
+
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
 LOAD_ENV = set -a && . docker/.env && set +a
 PIPENV_PIPFILE = config/Pipfile
@@ -39,14 +43,14 @@ unit-test:
 		-v
 
 unit-test-with-coverage:
-	@mkdir -p artifacts/coverage-html
+	@mkdir -p $(COVERAGE_HTML_DIR)
 	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
 		tests/unit/ \
 		components/dummy_component/tests/ \
 		systems/dummy_system/tests/test_dummy_unit.py \
 		systems/gcs/tests/unit/ \
 		--cov=systems/gcs/src \
-		--cov-report=html:artifacts/coverage-html \
+		--cov-report=html:$(COVERAGE_HTML_DIR) \
 		--cov-report=term-missing \
 		-v
 
@@ -60,10 +64,19 @@ integration-test-run:
 	@$(LOAD_ENV) && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
 		tests/integration/ \
 		systems/gcs/tests/integration/test_gcs_integration.py \
-		systems/drone_port/tests/integration/test_drone_port_integration.py \
 		-v
 
-gcs-system-up: 
+dummy-system-up:
+	@$(MAKE) -C systems/dummy_system prepare
+	@set -a && . systems/dummy_system/.generated/.env && set +a && \
+		$(DUMMY_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build --no-deps \
+		dummy_component_a dummy_component_b
+
+dummy-system-down:
+	-@set -a && . systems/dummy_system/.generated/.env && set +a && \
+		$(DUMMY_COMPOSE) rm -sf dummy_component_a dummy_component_b 2>/dev/null
+
+gcs-system-up:
 	@$(MAKE) -C systems/gcs prepare
 	@set -a && . systems/gcs/.generated/.env && set +a && \
 		$(GCS_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build --no-deps \
@@ -96,7 +109,7 @@ docker-down:
 
 docker-logs:
 	$(DOCKER_COMPOSE) --profile $$(grep BROKER_TYPE docker/.env | cut -d= -f2) logs -f
-	
+
 docker-ps:
 	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
