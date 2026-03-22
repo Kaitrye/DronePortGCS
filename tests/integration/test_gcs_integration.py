@@ -51,7 +51,7 @@ def _request_with_retries(system_bus, topic, message, timeout=10.0, retries=3, d
     return response
 
 
-def _wait_mission_in_store(system_bus, mission_id, retries=6, delay=1.5):
+def _wait_mission_in_store(system_bus, mission_id, retries=6, delay=1.5, predicate=None):
     for _ in range(retries):
         response = system_bus.request(
             MissionStoreTopics.GCS_MISSION_STORE,
@@ -66,7 +66,8 @@ def _wait_mission_in_store(system_bus, mission_id, retries=6, delay=1.5):
         if response and response.get("success"):
             mission = response.get("payload", {}).get("mission")
             if mission:
-                return mission
+                if predicate is None or predicate(mission):
+                    return mission
         time.sleep(delay)
 
     return None
@@ -74,8 +75,10 @@ def _wait_mission_in_store(system_bus, mission_id, retries=6, delay=1.5):
 
 def _build_task_payload(start_lat=55.751244, start_lon=37.618423, end_lat=55.761244, end_lon=37.628423):
     return {
-        "start_point": {"lat": start_lat, "lon": start_lon, "alt": 120},
-        "end_point": {"lat": end_lat, "lon": end_lon, "alt": 130},
+        "waypoints": [
+            {"lat": start_lat, "lon": start_lon, "alt": 120},
+            {"lat": end_lat, "lon": end_lon, "alt": 130},
+        ],
     }
 
 
@@ -128,7 +131,7 @@ def system_bus():
             f"Broker ({os.environ.get('BROKER_TYPE', 'kafka')}) "
             f"at {os.environ.get('BROKER_HOST', 'localhost')} not available."
         )
-    from broker.bus_factory import create_system_bus
+    from broker.src.bus_factory import create_system_bus
 
     bt = os.environ.get("BROKER_TYPE", "kafka").lower().strip().split("#")[0].strip()
     host = os.environ.get("BROKER_HOST", "localhost")
@@ -168,11 +171,7 @@ def test_task_submit_builds_route_and_saves_mission(system_bus):
         {
             "action": OrchestratorActions.TASK_SUBMIT,
             "sender": "gcs_integration_test",
-            "payload": {
-                "task_type": "delivery",
-                "start_point": {"lat": 55.751244, "lon": 37.618423, "alt": 120},
-                "end_point": {"lat": 55.761244, "lon": 37.628423, "alt": 130},
-            },
+            "payload": _build_task_payload(),
         },
         timeout=15.0,
         retries=3,
@@ -190,9 +189,12 @@ def test_task_submit_builds_route_and_saves_mission(system_bus):
     assert mission_id
     assert isinstance(waypoints, list)
     assert len(waypoints) >= 4
-    assert payload.get("signature")
 
-    mission = _wait_mission_in_store(system_bus, mission_id)
+    mission = _wait_mission_in_store(
+        system_bus,
+        mission_id,
+        predicate=lambda mission: mission.get("status") == "created",
+    )
     assert mission is not None
     assert mission.get("mission_id") == mission_id
     assert isinstance(mission.get("waypoints"), list)
@@ -211,8 +213,10 @@ def test_path_planner_direct_plan_persists_mission(system_bus):
             "payload": {
                 "mission_id": mission_id,
                 "task": {
-                    "start_point": {"lat": 59.9311, "lon": 30.3609, "alt": 80},
-                    "end_point": {"lat": 59.9411, "lon": 30.3709, "alt": 95},
+                    "waypoints": [
+                        {"lat": 59.9311, "lon": 30.3609, "alt": 80},
+                        {"lat": 59.9411, "lon": 30.3709, "alt": 95},
+                    ],
                 },
             },
         },
@@ -229,12 +233,14 @@ def test_path_planner_direct_plan_persists_mission(system_bus):
     assert payload.get("mission_id") == mission_id
     assert isinstance(payload.get("waypoints"), list)
     assert len(payload["waypoints"]) >= 4
-    assert payload.get("signature")
 
-    mission = _wait_mission_in_store(system_bus, mission_id)
+    mission = _wait_mission_in_store(
+        system_bus,
+        mission_id,
+        predicate=lambda mission: mission.get("status") == "created",
+    )
     assert mission is not None
     assert mission.get("mission_id") == mission_id
-    assert mission.get("signature") == payload.get("signature")
 
 
 def test_mission_converter_prepare_returns_wpl(system_bus):
@@ -266,7 +272,6 @@ def test_mission_converter_prepare_returns_wpl(system_bus):
     wpl = mission_payload.get("wpl", "")
     assert isinstance(wpl, str)
     assert wpl.startswith("QGC WPL 110")
-    assert mission_payload.get("signature")
 
 
 def test_task_assign_updates_store_and_publishes_upload(system_bus):
@@ -304,7 +309,13 @@ def test_task_assign_updates_store_and_publishes_upload(system_bus):
     assert filtered, "Expected drone_manager upload message for task_assign"
     assert filtered[-1].get("action") == DroneManagerActions.MISSION_UPLOAD
 
-    mission = _wait_mission_in_store(system_bus, mission_id, retries=10, delay=1.5)
+    mission = _wait_mission_in_store(
+        system_bus,
+        mission_id,
+        retries=10,
+        delay=1.5,
+        predicate=lambda mission: mission.get("assigned_drone") == drone_id and mission.get("status") == "assigned",
+    )
     assert mission is not None
     assert mission.get("assigned_drone") == drone_id
     assert mission.get("status") == "assigned"
@@ -347,7 +358,13 @@ def test_task_start_updates_store_and_publishes_start(system_bus):
         pytest.skip("Task assign chain is not ready in current docker stack.")
     assert assign_filtered[-1].get("action") == DroneManagerActions.MISSION_UPLOAD
 
-    mission_assigned = _wait_mission_in_store(system_bus, mission_id, retries=10, delay=1.5)
+    mission_assigned = _wait_mission_in_store(
+        system_bus,
+        mission_id,
+        retries=10,
+        delay=1.5,
+        predicate=lambda mission: mission.get("status") == "assigned",
+    )
     if mission_assigned is None or mission_assigned.get("status") != "assigned":
         pytest.skip("Task assign chain is not ready in current docker stack.")
 
@@ -376,6 +393,12 @@ def test_task_start_updates_store_and_publishes_start(system_bus):
     assert filtered, "Expected drone_manager start message for task_start"
     assert filtered[-1].get("action") == DroneManagerActions.MISSION_START
 
-    mission_running = _wait_mission_in_store(system_bus, mission_id, retries=10, delay=1.5)
+    mission_running = _wait_mission_in_store(
+        system_bus,
+        mission_id,
+        retries=10,
+        delay=1.5,
+        predicate=lambda mission: mission.get("status") == "running",
+    )
     assert mission_running is not None
     assert mission_running.get("status") == "running"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.base_component import BaseComponent
 from sdk.wpl_generator_2 import points_to_wpl as points_to_wpl_v2
 from systems.gcs.src.mission_converter.topics import ComponentTopics, MissionActions
@@ -28,13 +28,20 @@ class MissionConverterComponent(BaseComponent):
         mission_id = payload.get("mission_id")
         correlation_id = message.get("correlation_id")
 
-        mission_response = self.send_to_other_system(
-            ComponentTopics.GCS_MISSION_STORE,
-            MissionStoreActions.GET_MISSION,
-            {
+        request_message = {
+            "action": MissionStoreActions.GET_MISSION,
+            "sender": self.component_id,
+            "payload": {
                 "mission_id": mission_id
             },
-            correlation_id=correlation_id,
+        }
+        if correlation_id:
+            request_message["correlation_id"] = correlation_id
+
+        mission_response = self.bus.request(
+            ComponentTopics.GCS_MISSION_STORE,
+            request_message,
+            timeout=10.0,
         )
 
         if mission_response and mission_response.get("success"):

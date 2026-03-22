@@ -42,13 +42,7 @@ def test_build_route_rejects_invalid_waypoints(component):
         component._build_route([{"lat": "bad", "lon": 2.0}])
 
 
-def test_handle_path_plan_saves_mission_and_returns_route(component):
-    calls = []
-
-    def fake_publish(target_topic, action, payload, correlation_id=None):
-        calls.append((target_topic, action, payload, correlation_id))
-
-    component.publish_to_other_system = fake_publish
+def test_handle_path_plan_saves_mission_and_returns_route(component, mock_bus):
     message = {
         "payload": {
             "mission_id": "m-plan",
@@ -72,15 +66,15 @@ def test_handle_path_plan_saves_mission_and_returns_route(component):
     )
     assert result["mission_id"] == "m-plan"
     assert result["waypoints"] == expected_waypoints
-    assert calls[0][0] == ComponentTopics.GCS_MISSION_STORE
-    assert calls[0][1] == "store.save_mission"
-    assert calls[0][2]["mission"]["status"] == MissionStatus.CREATED
-    assert calls[0][3] == "corr-1"
+    assert mock_bus.publish.call_args.args[0] == ComponentTopics.GCS_MISSION_STORE
+    saved_message = mock_bus.publish.call_args.args[1]
+    assert saved_message["action"] == "store.save_mission"
+    assert saved_message["sender"] == "path-planner"
+    assert saved_message["payload"]["mission"]["status"] == MissionStatus.CREATED
+    assert saved_message["correlation_id"] == "corr-1"
 
 
-def test_handle_path_plan_returns_error_for_invalid_task(component):
-    component.publish_to_other_system = lambda *args, **kwargs: pytest.fail("publish should not be called")
-
+def test_handle_path_plan_returns_error_for_invalid_task(component, mock_bus):
     result = component._handle_path_plan(
         {
             "payload": {
@@ -92,12 +86,10 @@ def test_handle_path_plan_returns_error_for_invalid_task(component):
     )
 
     assert result == {"from": "path-planner", "error": "failed to build route"}
+    mock_bus.publish.assert_not_called()
 
 
-def test_handle_path_plan_sets_timestamps_on_saved_mission(component):
-    calls = []
-    component.publish_to_other_system = lambda *args, **kwargs: calls.append((args, kwargs))
-
+def test_handle_path_plan_sets_timestamps_on_saved_mission(component, mock_bus):
     component._handle_path_plan(
         {
             "payload": {
@@ -113,7 +105,7 @@ def test_handle_path_plan_sets_timestamps_on_saved_mission(component):
         }
     )
 
-    saved_mission = calls[0][0][2]["mission"]
+    saved_mission = mock_bus.publish.call_args.args[1]["payload"]["mission"]
     assert saved_mission["created_at"]
     assert saved_mission["updated_at"]
     assert saved_mission["assigned_drone"] is None

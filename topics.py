@@ -1,6 +1,13 @@
-"""Совместимость: внешние топики drone переэкспортируются из общего модуля GCS."""
+"""Внешние топики и actions GCS для взаимодействия с дроном."""
 
-from systems.gcs.src.topics import ExternalDroneActions as DroneActions
-from systems.gcs.src.topics import ExternalTopics as DroneTopics
+
+class DroneTopics:
+    DRONE = "drone"
+
+
+class DroneActions:
+    UPLOAD_MISSION = "drone.upload_mission"
+    MISSION_START = "drone.mission.start"
+
 
 __all__ = ["DroneTopics", "DroneActions"]

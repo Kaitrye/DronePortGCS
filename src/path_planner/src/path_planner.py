@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.base_component import BaseComponent
 from sdk.wpl_generator import expand_two_points_to_path
 from sdk.wpl_generator_2 import expand_three_points_to_snake_path
@@ -70,10 +70,10 @@ class PathPlannerComponent(BaseComponent):
 
         now = datetime.now(timezone.utc).isoformat()
 
-        self.publish_to_other_system(
-            ComponentTopics.GCS_MISSION_STORE,
-            "store.save_mission",
-            {
+        publish_message = {
+            "action": "store.save_mission",
+            "sender": self.component_id,
+            "payload": {
                 "mission": {
                     "mission_id": mission_id,
                     "waypoints": waypoints,
@@ -83,7 +83,13 @@ class PathPlannerComponent(BaseComponent):
                     "updated_at": now,
                 }
             },
-            correlation_id=correlation_id,
+        }
+        if correlation_id:
+            publish_message["correlation_id"] = correlation_id
+
+        self.bus.publish(
+            ComponentTopics.GCS_MISSION_STORE,
+            publish_message,
         )
 
         return {

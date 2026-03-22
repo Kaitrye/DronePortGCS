@@ -2,7 +2,7 @@ import os
 import signal
 import time
 
-from broker.bus_factory import create_system_bus
+from broker.src.bus_factory import create_system_bus
 from systems.gcs.src.path_planner.src.path_planner import PathPlannerComponent
 
 

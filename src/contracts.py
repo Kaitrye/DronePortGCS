@@ -14,4 +14,4 @@ class MissionStatus:
 class DroneStatus:
     AVAILABLE: str = "available"
     RESERVED: str = "reserved"
-    BUSY: str = "BUSY"
+    BUSY: str = "busy"
