@@ -7,6 +7,9 @@ PYTEST_CONFIG = config/pyproject.toml
 DUMMY_COMPOSE = docker compose -f systems/dummy_system/.generated/docker-compose.yml --env-file systems/dummy_system/.generated/.env
 GCS_COMPOSE = docker compose -f systems/gcs/.generated/docker-compose.yml --env-file systems/gcs/.generated/.env
 DRONE_PORT_COMPOSE = docker compose -f systems/drone_port/.generated/docker-compose.yml --env-file systems/drone_port/.generated/.env
+PYTEST_COV_OPTS = --cov=. --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+ARTIFACTS_DIR = artifacts
+PYTEST_JUNIT_OPTS = --junitxml=$(ARTIFACTS_DIR)/pytest-unit.xml
 
 help:
 	@echo "make init              - Установить pipenv и зависимости"
@@ -31,7 +34,8 @@ init:
 	PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv install --dev
 
 unit-test:
-	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
+	@mkdir -p $(ARTIFACTS_DIR)
+	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) PYTHONPATH=. pipenv run pytest -c $(PYTEST_CONFIG) $(PYTEST_JUNIT_OPTS) \
 		tests/unit/ \
 		components/dummy_component/tests/ \
 		systems/dummy_system/tests/test_dummy_unit.py \

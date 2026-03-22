@@ -29,6 +29,13 @@ jobs:
     - name: Run unit-tests
       run: make unit-test
 
+    - name: Upload unit test report (JUnit)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-unit-junit
+        path: artifacts/pytest-unit.xml
+
   integration-tests:
     runs-on: ubuntu-latest
     needs: unit-tests
