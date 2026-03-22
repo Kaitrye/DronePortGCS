@@ -46,14 +46,12 @@ class OrchestratorComponent(BaseComponent):
         if planned and planned.get("success"):
             payload = planned.get("payload", {})
             waypoints = payload.get("waypoints", [])
-            signature = payload.get("signature")
 
             if isinstance(waypoints, list) and len(waypoints) >= 4:
                 return {
                     "from": self.component_id,
                     "mission_id": mission_id,
                     "waypoints": waypoints,
-                    "signature": signature,
                 }
 
         return {

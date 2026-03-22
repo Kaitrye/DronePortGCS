@@ -16,8 +16,7 @@ def test_handle_task_submit_returns_route_when_planner_succeeds(component, monke
     component.send_to_other_system = lambda *args, **kwargs: {
         "success": True,
         "payload": {
-            "waypoints": [1, 2, 3, 4], 
-            "signature": "sig-1"
+            "waypoints": [1, 2, 3, 4],
         },
     }
 
@@ -27,14 +26,13 @@ def test_handle_task_submit_returns_route_when_planner_succeeds(component, monke
         "from": "orchestrator",
         "mission_id": "m-abcdef123456",
         "waypoints": [1, 2, 3, 4],
-        "signature": "sig-1",
     }
 
 
 def test_handle_task_submit_returns_error_when_planner_fails(component):
     component.send_to_other_system = lambda *args, **kwargs: {"success": False}
 
-    result = component._handle_task_submit({"payload": {"type": "delivery"}})
+    result = component._handle_task_submit({"payload": {"type": "delivery"}, "correlation_id": "corr-11"})
 
     assert result == {"from": "orchestrator", "error": "failed to build route"}
 
@@ -42,10 +40,10 @@ def test_handle_task_submit_returns_error_when_planner_fails(component):
 def test_handle_task_submit_returns_error_for_short_route(component):
     component.send_to_other_system = lambda *args, **kwargs: {
         "success": True,
-        "payload": {"waypoints": [1, 2, 3], "signature": "sig-short"},
+        "payload": {"waypoints": [1, 2, 3]},
     }
 
-    result = component._handle_task_submit({"payload": {"type": "delivery"}})
+    result = component._handle_task_submit({"payload": {"type": "delivery"}, "correlation_id": "corr-12"})
 
     assert result == {"from": "orchestrator", "error": "failed to build route"}
 
@@ -84,7 +82,9 @@ def test_handle_task_assign_skips_publish_without_wpl(component):
     }
     component.publish_to_other_system = pytest.fail
 
-    assert component._handle_task_assign({"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}}) is None
+    assert component._handle_task_assign(
+        {"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}, "correlation_id": "corr-14"}
+    ) is None
 
 
 def test_handle_task_start_publishes_start_command(component):

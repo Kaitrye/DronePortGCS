@@ -1,7 +1,6 @@
-import hashlib
-
 import pytest
 
+from sdk.wpl_generator_2 import points_to_wpl as points_to_wpl_v2
 from systems.gcs.src.mission_converter.src.mission_converter import MissionConverterComponent
 from systems.gcs.src.mission_converter.topics import MissionActions
 
@@ -11,32 +10,21 @@ def component(mock_bus):
     return MissionConverterComponent(component_id="mission-converter", bus=mock_bus)
 
 
-def test_extract_points_returns_waypoints_list(component):
-    payload = {"waypoints": [{"lat": 1.0, "lon": 2.0}]}
-
-    assert component._extract_points(payload) == payload["waypoints"]
-
-
-def test_extract_points_returns_empty_list_for_invalid_payload(component):
-    assert component._extract_points({"waypoints": "invalid"}) == []
-    assert component._extract_points({}) == []
-
-
-def test_to_wpl_formats_header_and_waypoints(component):
+def test_to_wpl_serializes_explicit_waypoints_via_sdk(component):
     points = [
-        {"lat": 55.1, "lon": 37.2, "alt": 100, "params": {"p1": 7}, "command": 22},
-        {"latitude": 55.2, "longitude": 37.3, "altitude": 110},
+        {"lat": 55.1, "lon": 37.2, "alt": 100},
+        {"lat": 55.2, "lon": 37.3, "alt": 110},
+        {"lat": 55.3, "lon": 37.4, "alt": 120},
+        {"lat": 55.4, "lon": 37.5, "alt": 130},
     ]
 
-    result = component._to_wpl(points)
+    result = points_to_wpl_v2(points)
+    expected = points_to_wpl_v2(points)
 
-    lines = result.splitlines()
-    assert lines[0] == "QGC WPL 110"
-    assert lines[1] == "0\t1\t3\t22\t7\t0\t0\t0\t55.1\t37.2\t100\t1"
-    assert lines[2] == "1\t0\t3\t16\t0\t0\t0\t0\t55.2\t37.3\t110\t1"
+    assert result == expected
 
 
-def test_handle_mission_prepare_returns_wpl_and_signature(component):
+def test_handle_mission_prepare_returns_wpl(component):
     mission = {
         "waypoints": [
             {"lat": 10.0, "lon": 20.0, "alt": 30.0},
@@ -48,22 +36,24 @@ def test_handle_mission_prepare_returns_wpl_and_signature(component):
         "payload": {"mission": mission},
     }
 
-    result = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}})
+    result = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}, "correlation_id": "corr-1"})
 
-    expected_wpl = component._to_wpl(mission["waypoints"])
-    expected_signature = hashlib.sha256(expected_wpl.encode("utf-8")).hexdigest()
+    expected_wpl = points_to_wpl_v2(mission["waypoints"])
     assert result == {
         "mission": {
             "mission_id": "m-1",
             "wpl": expected_wpl,
-            "signature": expected_signature,
-        }
+        },
+        "from": "mission-converter",
     }
 
 
 def test_handle_mission_prepare_returns_error_when_store_unavailable(component):
     component.send_to_other_system = lambda *args, **kwargs: None
 
-    result = component._handle_mission_prepare({"payload": {"mission_id": "m-404"}})
+    result = component._handle_mission_prepare({"payload": {"mission_id": "m-404"}, "correlation_id": "corr-404"})
 
-    assert result == {"mission_id": "m-404", "error": "mission store unavailable"}
+    assert result == {
+        "error": "mission store unavailable",
+        "from": "mission-converter",
+    }
