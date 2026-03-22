@@ -72,7 +72,8 @@ def test_handle_save_telemetry(component):
                     "drone_id": "dr-4",
                     "battery": 40,
                 }
-            }
+            },
+            "correlation_id": "corr-telemetry",
         }
     )
 
@@ -84,6 +85,8 @@ def test_handle_update_drone_overrides_status(component):
     component._read_drone = lambda drone_id: {"battery": 50, "status": "connected"}
     component._write_drone = lambda drone_id, state: writes.append((drone_id, state))
 
-    component._handle_update_drone({"payload": {"drone_id": "dr-5", "status": "available"}})
+    component._handle_update_drone(
+        {"payload": {"drone_id": "dr-5", "status": "available"}, "correlation_id": "corr-update"}
+    )
 
     assert writes == [("dr-5", {"battery": 50, "status": "available"})]

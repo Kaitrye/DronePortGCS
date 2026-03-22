@@ -30,7 +30,7 @@ def test_read_json_returns_none_for_missing_key(component):
 def test_handle_save_mission_persists_payload(component):
     mission = {"mission_id": "m-save", "status": "created"}
 
-    component._handle_save_mission({"payload": {"mission": mission}})
+    component._handle_save_mission({"payload": {"mission": mission}, "correlation_id": "corr-save"})
 
     component.redis_client.set.assert_called_once_with(
         "gcs:mission:m-save",
@@ -41,7 +41,7 @@ def test_handle_save_mission_persists_payload(component):
 def test_handle_get_mission_returns_component_and_mission(component):
     component._read_mission = lambda mission_id: {"mission_id": mission_id, "status": "created"}
 
-    result = component._handle_get_mission({"payload": {"mission_id": "m-get"}})
+    result = component._handle_get_mission({"payload": {"mission_id": "m-get"}, "correlation_id": "corr-get"})
 
     assert result == {
         "from": "mission-store",
@@ -59,7 +59,8 @@ def test_handle_update_mission_merges_fields_and_updates_timestamp(component):
             "payload": {
                 "mission_id": "m-update",
                 "fields": {"status": "assigned", "assigned_drone": "dr-1"},
-            }
+            },
+            "correlation_id": "corr-update",
         }
     )
 
