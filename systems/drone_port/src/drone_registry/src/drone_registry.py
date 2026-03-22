@@ -5,7 +5,7 @@ import datetime
 from typing import Dict, Any
 import redis
 from sdk.base_component import BaseComponent
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 
 
@@ -28,7 +28,7 @@ class DroneRegistry(BaseComponent):
 
         super().__init__(
             component_id=component_id,
-            component_type="droneport",
+            component_type="drone_port",
             topic=RegistryTopics.DRONE_REGISTRY,
             bus=bus,
         )
@@ -48,6 +48,7 @@ class DroneRegistry(BaseComponent):
         """
         payload = message.get("payload")
         drone_id = payload.get("drone_id")
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         self.redis.hset(
             f"drone:{drone_id}",
@@ -56,8 +57,8 @@ class DroneRegistry(BaseComponent):
                 "model": payload.get("model", "unknown"),
                 "battery": "unknown",
                 "status": "new",
-                "registered_at": datetime.datetime.utcnow().isoformat(),
-                "updated_at": datetime.datetime.utcnow().isoformat(),
+                "registered_at": now,
+                "updated_at": now,
             },
         )
         
@@ -128,7 +129,7 @@ class DroneRegistry(BaseComponent):
             mapping={
                 "battery": battery,
                 "status": "ready" if battery == 100 else "charging",
-                "updated_at": datetime.datetime.utcnow().isoformat(),
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             },
         )
 

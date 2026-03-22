@@ -8,7 +8,7 @@ from broker.src.system_bus import SystemBus
 def test_kafka_type_returns_kafka_bus():
     with patch("broker.src.bus_factory.KafkaSystemBus") as mock_cls:
         mock_cls.return_value = MagicMock(spec=SystemBus)
-        from broker.bus_factory import create_system_bus
+        from broker.src.bus_factory import create_system_bus
         bus = create_system_bus(bus_type="kafka", client_id="test")
         mock_cls.assert_called_once()
         assert isinstance(bus, SystemBus)
@@ -17,14 +17,14 @@ def test_kafka_type_returns_kafka_bus():
 def test_mqtt_type_returns_mqtt_bus():
     with patch("broker.src.bus_factory.MQTTSystemBus") as mock_cls:
         mock_cls.return_value = MagicMock(spec=SystemBus)
-        from broker.bus_factory import create_system_bus
+        from broker.src.bus_factory import create_system_bus
         bus = create_system_bus(bus_type="mqtt", client_id="test")
         mock_cls.assert_called_once()
         assert isinstance(bus, SystemBus)
 
 
 def test_unknown_type_raises():
-    from broker.bus_factory import create_system_bus
+    from broker.src.bus_factory import create_system_bus
     with pytest.raises(ValueError, match="Unknown broker type"):
         create_system_bus(bus_type="redis")
 
@@ -32,7 +32,7 @@ def test_unknown_type_raises():
 def test_type_from_config_dict():
     with patch("broker.src.bus_factory.MQTTSystemBus") as mock_cls:
         mock_cls.return_value = MagicMock(spec=SystemBus)
-        from broker.bus_factory import create_system_bus
+        from broker.src.bus_factory import create_system_bus
         bus = create_system_bus(
             client_id="test",
             config={"broker": {"type": "mqtt"}}

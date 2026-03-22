@@ -18,7 +18,7 @@ services:
     environment:
       - COMPONENT_ID=state_store
       - INSTANCE_ID=${INSTANCE_ID:-1}
-      - SYSTEM_NAME=${SYSTEM_NAME:-droneport}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
@@ -40,7 +40,7 @@ services:
     environment:
       - COMPONENT_ID=orchestrator
       - INSTANCE_ID=${INSTANCE_ID:-1}
-      - SYSTEM_NAME=${SYSTEM_NAME:-droneport}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
@@ -60,7 +60,7 @@ services:
     environment:
       - COMPONENT_ID=drone_manager
       - INSTANCE_ID=${INSTANCE_ID:-1}
-      - SYSTEM_NAME=${SYSTEM_NAME:-droneport}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
@@ -80,7 +80,7 @@ services:
     environment:
       - COMPONENT_ID=drone_registry
       - INSTANCE_ID=${INSTANCE_ID:-1}
-      - SYSTEM_NAME=${SYSTEM_NAME:-droneport}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
@@ -102,7 +102,7 @@ services:
     environment:
       - COMPONENT_ID=port_manager
       - INSTANCE_ID=${INSTANCE_ID:-1}
-      - SYSTEM_NAME=${SYSTEM_NAME:-droneport}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
@@ -124,7 +124,7 @@ services:
     environment:
       - COMPONENT_ID=charging_manager
       - INSTANCE_ID=${INSTANCE_ID:-1}
-      - SYSTEM_NAME=${SYSTEM_NAME:-droneport}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}

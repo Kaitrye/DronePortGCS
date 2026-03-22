@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Callable, Optional
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.messages import create_response
 
 
@@ -92,41 +92,6 @@ class BaseComponent(ABC):
                     error=str(e),
                 )
                 self.bus.publish(message["reply_to"], response)
-
-    def send_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        timeout: float = 10.0,
-        correlation_id: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """Отправляет запрос и ждёт ответа (request/response)."""
-        message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            message["correlation_id"] = correlation_id
-        return self.bus.request(target_topic, message, timeout=timeout)
-
-    def publish_to_other_system(
-        self,
-        target_topic: str,
-        action: str,
-        payload: dict,
-        correlation_id: Optional[str] = None,
-    ) -> None:
-        """Публикует сообщение без ожидания ответа (fire-and-forget)."""
-        message = {
-            "action": action,
-            "sender": self.component_id,
-            "payload": payload,
-        }
-        if correlation_id:
-            message["correlation_id"] = correlation_id
-        self.bus.publish(target_topic, message)
 
     def _handle_ping(self, message: Dict[str, Any]) -> Dict[str, Any]:
         return {"pong": True, "component_id": self.component_id}

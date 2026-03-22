@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.base_component import BaseComponent
 from systems.gcs.src.orchestrator.topics import OrchestratorActions, ComponentTopics
 from systems.gcs.src.path_planner.topics import PathPlannerActions
@@ -33,14 +33,21 @@ class OrchestratorComponent(BaseComponent):
         correlation_id = message.get("correlation_id")
         mission_id = f"m-{uuid4().hex[:12]}"
 
-        planned = self.send_to_other_system(
-            ComponentTopics.GCS_PATH_PLANNER,
-            PathPlannerActions.PATH_PLAN,
-            {
-                "mission_id": mission_id, 
+        planned_message = {
+            "action": PathPlannerActions.PATH_PLAN,
+            "sender": self.component_id,
+            "payload": {
+                "mission_id": mission_id,
                 "task": task_payload
             },
-            correlation_id=correlation_id,
+        }
+        if correlation_id:
+            planned_message["correlation_id"] = correlation_id
+
+        planned = self.bus.request(
+            ComponentTopics.GCS_PATH_PLANNER,
+            planned_message,
+            timeout=10.0,
         )
 
         if planned and planned.get("success"):
@@ -66,14 +73,20 @@ class OrchestratorComponent(BaseComponent):
         mission_id = payload.get("mission_id")
         drone_id = payload.get("drone_id")
 
-        prepared = self.send_to_other_system(
-            ComponentTopics.GCS_MISSION_CONVERTER,
-            MissionActions.MISSION_PREPARE,
-            {
+        prepared_message = {
+            "action": MissionActions.MISSION_PREPARE,
+            "sender": self.component_id,
+            "payload": {
                 "mission_id": mission_id,
             },
+        }
+        if correlation_id:
+            prepared_message["correlation_id"] = correlation_id
+
+        prepared = self.bus.request(
+            ComponentTopics.GCS_MISSION_CONVERTER,
+            prepared_message,
             timeout=30.0,
-            correlation_id=correlation_id,
         )
 
         if prepared and prepared.get("success"):
@@ -82,15 +95,21 @@ class OrchestratorComponent(BaseComponent):
             wpl = prepared_mission.get("wpl")
 
             if wpl:
-                self.publish_to_other_system(
-                    ComponentTopics.GCS_DRONE_MANAGER,
-                    DroneManagerActions.MISSION_UPLOAD,
-                    {
+                publish_message = {
+                    "action": DroneManagerActions.MISSION_UPLOAD,
+                    "sender": self.component_id,
+                    "payload": {
                         "mission_id": mission_id,
                         "drone_id": drone_id,
                         "wpl": wpl,
                     },
-                    correlation_id=correlation_id,
+                }
+                if correlation_id:
+                    publish_message["correlation_id"] = correlation_id
+
+                self.bus.publish(
+                    ComponentTopics.GCS_DRONE_MANAGER,
+                    publish_message,
                 )
 
         return None
@@ -102,14 +121,20 @@ class OrchestratorComponent(BaseComponent):
         mission_id = payload.get("mission_id")
         drone_id = payload.get("drone_id")
 
-        self.publish_to_other_system(
-            ComponentTopics.GCS_DRONE_MANAGER,
-            DroneManagerActions.MISSION_START,
-            {
-                "mission_id": mission_id, 
+        publish_message = {
+            "action": DroneManagerActions.MISSION_START,
+            "sender": self.component_id,
+            "payload": {
+                "mission_id": mission_id,
                 "drone_id": drone_id
             },
-            correlation_id=correlation_id,
+        }
+        if correlation_id:
+            publish_message["correlation_id"] = correlation_id
+
+        self.bus.publish(
+            ComponentTopics.GCS_DRONE_MANAGER,
+            publish_message,
         )
 
         return None

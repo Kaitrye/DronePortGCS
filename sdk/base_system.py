@@ -15,7 +15,7 @@ import sys
 
 from flask import Flask, jsonify
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.messages import create_response
 
 

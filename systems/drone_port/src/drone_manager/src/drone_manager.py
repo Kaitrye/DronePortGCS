@@ -4,7 +4,7 @@ DroneManager — взаимодействие с физическими дрон
 import datetime
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics, DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
@@ -26,7 +26,7 @@ class DroneManager(BaseComponent):
     ):
         super().__init__(
             component_id=component_id,
-            component_type="droneport",
+            component_type="drone_port",
             topic=DroneManagerTopics.DRONE_MANAGER,
             bus=bus,
         )

@@ -58,7 +58,7 @@ def system_bus():
             "Run: make docker-up"
         )
     _ensure_broker_env()
-    from broker.bus_factory import create_system_bus
+    from broker.src.bus_factory import create_system_bus
 
     bus = create_system_bus(client_id=f"drone_port_test_{uuid.uuid4().hex[:8]}")
     bus.start()

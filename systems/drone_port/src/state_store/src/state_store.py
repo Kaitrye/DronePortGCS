@@ -4,7 +4,7 @@ StateStore — хранение состояния портов в Redis.
 import redis
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from systems.drone_port.src.state_store.src.ports import DEFAULT_PORTS
 from systems.drone_port.src.state_store.topics import ComponentTopics, StateStoreActions
 
@@ -33,7 +33,7 @@ class StateStore(BaseComponent):
                 
         super().__init__(
             component_id=component_id,
-            component_type="droneport",
+            component_type="drone_port",
             topic=ComponentTopics.STATE_STORE,
             bus=bus,
         )

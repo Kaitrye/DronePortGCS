@@ -2,7 +2,7 @@ import pytest
 
 from sdk.wpl_generator_2 import points_to_wpl as points_to_wpl_v2
 from systems.gcs.src.mission_converter.src.mission_converter import MissionConverterComponent
-from systems.gcs.src.mission_converter.topics import MissionActions
+from systems.gcs.src.mission_store.topics import ComponentTopics, MissionStoreActions
 
 
 @pytest.fixture
@@ -24,14 +24,14 @@ def test_to_wpl_serializes_explicit_waypoints_via_sdk(component):
     assert result == expected
 
 
-def test_handle_mission_prepare_returns_wpl(component):
+def test_handle_mission_prepare_returns_wpl(component, mock_bus):
     mission = {
         "waypoints": [
             {"lat": 10.0, "lon": 20.0, "alt": 30.0},
             {"lat": 11.0, "lon": 21.0, "alt": 31.0},
         ]
     }
-    component.send_to_other_system = lambda *args, **kwargs: {
+    mock_bus.request.return_value = {
         "success": True,
         "payload": {"mission": mission},
     }
@@ -46,10 +46,20 @@ def test_handle_mission_prepare_returns_wpl(component):
         },
         "from": "mission-converter",
     }
+    mock_bus.request.assert_called_once_with(
+        ComponentTopics.GCS_MISSION_STORE,
+        {
+            "action": MissionStoreActions.GET_MISSION,
+            "sender": "mission-converter",
+            "payload": {"mission_id": "m-1"},
+            "correlation_id": "corr-1",
+        },
+        timeout=10.0,
+    )
 
 
-def test_handle_mission_prepare_returns_error_when_store_unavailable(component):
-    component.send_to_other_system = lambda *args, **kwargs: None
+def test_handle_mission_prepare_returns_error_when_store_unavailable(component, mock_bus):
+    mock_bus.request.return_value = None
 
     result = component._handle_mission_prepare({"payload": {"mission_id": "m-404"}, "correlation_id": "corr-404"})
 

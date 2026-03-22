@@ -62,9 +62,8 @@ jobs:
     - name: Docker up
       run: |
         make docker-up
-        make dummy-system-up
         make gcs-system-up
-        sleep 60
+        make drone-port-system-up
 
     - name: Run integration-tests
       run: make integration-test-run
@@ -72,16 +71,22 @@ jobs:
     - name: Dump logs for each container
       if: always()
       run: |
-        docker logs drones-mission_store-1 || true
-        docker logs drones-drone_store-1 || true
-        docker logs drones-mission_converter-1 || true
-        docker logs drones-orchestrator-1 || true
-        docker logs drones-path_planner-1 || true
-        docker logs drones-drone_manager-1 || true
+        docker logs gcs-mission_store-1 || true
+        docker logs gcs-drone_store-1 || true
+        docker logs gcs-mission_converter-1 || true
+        docker logs gcs-orchestrator-1 || true
+        docker logs gcs-path_planner-1 || true
+        docker logs gcs-drone_manager-1 || true
+        docker logs drone-port-state_store-1 || true
+        docker logs drone-port-port_manager-1 || true
+        docker logs drone-port-drone_registry-1 || true
+        docker logs drone-port-charging_manager-1 || true
+        docker logs drone-port-drone_manager-1 || true
+        docker logs drone-port-orchestrator-1 || true
 
     - name: Docker down
       if: always()
       run: |
+        make drone-port-system-down
         make gcs-system-down
-        make dummy-system-down
         make docker-down

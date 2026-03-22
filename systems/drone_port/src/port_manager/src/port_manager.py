@@ -4,7 +4,7 @@ PortManager — управление посадочными площадками
 import datetime
 from typing import Dict, Any, List
 from sdk.base_component import BaseComponent
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from systems.drone_port.src.port_manager.topics import ComponentTopics, PortManagerActions
 from systems.drone_port.src.state_store.topics import StateStoreActions
 
@@ -18,7 +18,7 @@ class PortManager(BaseComponent):
     ):
         super().__init__(
             component_id=component_id,
-            component_type="droneport",
+            component_type="drone_port",
             topic=ComponentTopics.PORT_MANAGER,
             bus=bus,
         )

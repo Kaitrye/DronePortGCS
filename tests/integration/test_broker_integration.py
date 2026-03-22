@@ -51,7 +51,7 @@ def system_bus():
             f"Broker at {os.environ.get('BROKER_HOST', 'localhost')} not available. Run: make docker-up"
         )
     _ensure_broker_env()
-    from broker.bus_factory import create_system_bus
+    from broker.src.bus_factory import create_system_bus
 
     bus = create_system_bus(client_id=f"integration_test_{uuid.uuid4().hex[:8]}")
     bus.start()
@@ -65,7 +65,7 @@ def test_create_system_bus_start_stop():
     if not _broker_available():
         pytest.skip("Broker not available. Run: make docker-up")
     _ensure_broker_env()
-    from broker.bus_factory import create_system_bus
+    from broker.src.bus_factory import create_system_bus
 
     bus = create_system_bus(client_id=f"integration_start_stop_{uuid.uuid4().hex[:8]}")
     bus.start()
