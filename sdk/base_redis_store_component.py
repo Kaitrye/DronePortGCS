@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.base_component import BaseComponent
 
 try:

@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from sdk.base_redis_store_component import BaseRedisStoreComponent
 from systems.gcs.src.mission_store.topics import ComponentTopics, MissionStoreActions
 

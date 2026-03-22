@@ -7,7 +7,7 @@
     python scripts/prepare_system.py <system_dir>
 
 Пример:
-    python scripts/prepare_system.py systems/dummy_system
+    python scripts/prepare_system.py systems/my_system
 """
 import sys
 import os
@@ -56,6 +56,7 @@ def rewrite_volumes(volumes: list, from_dir: Path, to_dir: Path) -> list:
 def prepare_system(system_dir: str):
     root = Path(__file__).resolve().parent.parent
     system_path = root / system_dir
+    compose_project_name = system_path.name.replace("_", "-")
 
     if not system_path.is_dir():
         print(f"Error: system directory '{system_path}' not found", file=sys.stderr)
@@ -152,7 +153,7 @@ def prepare_system(system_dir: str):
 
     # --- Merge into single compose ---
     merged = {
-        "name": "drones",
+        "name": compose_project_name,
         "services": {},
         "networks": {
             "drones_net": {

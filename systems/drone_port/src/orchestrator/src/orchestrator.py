@@ -4,7 +4,7 @@ Orchestrator — взаимодействие с Эксплуатантом и S
 import datetime
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
-from broker.system_bus import SystemBus
+from broker.src.system_bus import SystemBus
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.orchestrator.topics import OrchestratorActions
 from systems.drone_port.src.orchestrator.topics import ComponentTopics as OrchestratorTopics
@@ -23,7 +23,7 @@ class Orchestrator(BaseComponent):
     ):
         super().__init__(
             component_id=component_id,
-            component_type="droneport",
+            component_type="drone_port",
             topic=OrchestratorTopics.ORCHESTRATOR,
             bus=bus,
         )

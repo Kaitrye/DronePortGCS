@@ -1,54 +1,32 @@
-# DronePort GCS
+# DronePort and GCS
 
-НУС/GCS для постановки задач дронам, подготовки миссий и передачи полетных команд через брокер сообщений.
+README описывает внешний контракт двух систем в репозитории:
 
-README описывает внешний контракт системы: что должен знать эксплуатант, какие топики используются и какие сообщения реально поддерживаются в текущей реализации GCS и DronePort.
+- `DronePort` - сервис наземной инфраструктуры для приема дронов, управления портами и зарядкой.
+- `GCS` - НУС для постановки задач дронам, подготовки миссий и передачи полетных команд через брокер сообщений.
+
+Ниже отдельно разобрано, что должен знать интегратор, какие топики используются и какие сообщения реально поддерживаются в текущей реализации.
 
 ## Содержание
 
-- [Назначение](#назначение)
 - [Дронопорт](#дронопорт)
-- [Состав GCS](#состав-gcs)
-- [Внешний контракт](#внешний-контракт)
-- [Топики и адресация](#топики-и-адресация)
-- [Протокол сообщений](#протокол-сообщений)
-- [Интеграция с эксплуатантом](#интеграция-с-эксплуатантом)
-- [Временный stub-канал дрона](#временный-stub-канал-дрона)
-- [Хранимые сущности и статусы](#хранимые-сущности-и-статусы)
+- [GCS](#gcs)
 - [Запуск](#запуск)
 - [Тесты](#тесты)
 - [Структура репозитория](#структура-репозитория)
 
-## Назначение
-
-GCS принимает задачу от внешней системы эксплуатанта, строит маршрут, сохраняет миссию, конвертирует ее в `QGC WPL 110`, назначает миссию на конкретный борт и публикует команды в временный stub-канал:
-
-- загрузить миссию;
-- начать выполнение миссии;
-- передавать телеметрию обратно в GCS для обновления состояния борта.
-
-Поддерживаются два брокера:
-
-- `MQTT`
-- `Kafka`
-
-В коде вся доменная логика GCS работает с dot-topic нотацией, например `v1.gcs.1.orchestrator`.
-Для MQTT эта нотация автоматически преобразуется в slash-topic:
-
-- внутренний топик: `v1.gcs.1.orchestrator`
-- MQTT-топик: `v1/gcs/1/orchestrator`
-
 ## Дронопорт
 
-DronePort - сервис наземной инфраструктуры для приема дронов, управления портами и зарядкой.
-В отличие от старого описания, ниже перечислен именно тот внешний контракт, который поддерживается текущим кодом в `systems/drone_port`.
+### Назначение
+
+DronePort принимает запросы на посадку, взлет и зарядку, распределяет порты, хранит состояние портов и дронов и, при необходимости, передает состояние дронов Эксплуатанту и SITL.
 
 ### Состав DronePort
 
 Система состоит из шести компонентов:
 
-- `orchestrator` - внешняя точка входа для запросов к DronePort.
-- `drone_manager` - обработка запросов от дронов на посадку, взлет и зарядку.
+- `orchestrator` - внешняя точка входа для запросов к DronePort от Эксплуатанта.
+- `drone_manager` - обработка запросов от Дронов на посадку, взлет и зарядку.
 - `drone_registry` - реестр дронов и фасад для чтения их статуса.
 - `port_manager` - работа со слотами посадки.
 - `charging_manager` - запуск и симуляция зарядки.
@@ -59,7 +37,7 @@ DronePort - сервис наземной инфраструктуры для п
 Адресация DronePort задается тремя переменными:
 
 - `TOPIC_VERSION`, по умолчанию `v1`
-- `SYSTEM_NAME`, по умолчанию `droneport`
+- `SYSTEM_NAME`, по умолчанию `drone_port`
 - `INSTANCE_ID`, по умолчанию `1`
 
 Формула внутренних топиков:
@@ -70,20 +48,19 @@ DronePort - сервис наземной инфраструктуры для п
 
 При значениях по умолчанию используются такие топики:
 
-| Назначение | Dot-topic | MQTT-topic |
-|------------|-----------|------------|
-| Внешняя система -> Orchestrator | `v1.droneport.1.orchestrator` | `v1/droneport/1/orchestrator` |
-| DronePort -> DroneManager | `v1.droneport.1.drone_manager` | `v1/droneport/1/drone_manager` |
-| DronePort -> DroneRegistry | `v1.droneport.1.registry` | `v1/droneport/1/registry` |
-| DronePort -> PortManager | `v1.droneport.1.port_manager` | `v1/droneport/1/port_manager` |
-| DronePort -> ChargingManager | `v1.droneport.1.charging_manager` | `v1/droneport/1/charging_manager` |
-| DronePort -> StateStore | `v1.droneport.1.state_store` | `v1/droneport/1/state_store` |
+| Назначение | Топик |
+|------------|-------|
+| Эксплуатант -> Orchestrator | `v1.drone_port.1.orchestrator` |
+| Дрон -> DroneManager | `v1.drone_port.1.drone_manager` |
+| Внутренние запросы -> DroneRegistry | `v1.drone_port.1.registry` |
+| Внутренние запросы -> PortManager | `v1.drone_port.1.port_manager` |
+| Внутренние запросы -> ChargingManager | `v1.drone_port.1.charging_manager` |
+| Внутренние запросы -> StateStore | `v1.drone_port.1.state_store` |
 
-Для внешней интеграции сейчас обычно нужен только:
+Для внешней интеграции используются две входные точки:
 
-- `v1.droneport.1.orchestrator`
-
-Прямые вызовы остальных топиков - это уже интеграция на уровне внутренних компонентов или системных тестов.
+- `v1.drone_port.1.orchestrator` - для запросов от внешней системы эксплуатанта;
+- `v1.drone_port.1.drone_manager` - для запросов от самих дронов на посадку, взлет и зарядку.
 
 ### Actions DronePort
 
@@ -91,7 +68,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик:
 
-- `v1.droneport.1.orchestrator`
+- `v1.drone_port.1.orchestrator`
 
 Поддерживаемые actions:
 
@@ -103,7 +80,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик:
 
-- `v1.droneport.1.drone_manager`
+- `v1.drone_port.1.drone_manager`
 
 Поддерживаемые actions:
 
@@ -117,7 +94,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик:
 
-- `v1.droneport.1.registry`
+- `v1.drone_port.1.registry`
 
 Поддерживаемые actions:
 
@@ -134,7 +111,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик:
 
-- `v1.droneport.1.port_manager`
+- `v1.drone_port.1.port_manager`
 
 Поддерживаемые actions:
 
@@ -148,7 +125,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик:
 
-- `v1.droneport.1.charging_manager`
+- `v1.drone_port.1.charging_manager`
 
 Поддерживаемые actions:
 
@@ -160,7 +137,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик:
 
-- `v1.droneport.1.state_store`
+- `v1.drone_port.1.state_store`
 
 Поддерживаемые actions:
 
@@ -185,7 +162,17 @@ DronePort - сервис наземной инфраструктуры для п
 }
 ```
 
-## Состав GCS
+## GCS
+
+### Назначение
+
+GCS принимает задачу от внешней системы эксплуатанта, строит маршрут, сохраняет миссию, конвертирует ее в `QGC WPL 110`, назначает миссию на конкретный борт и взаимодействует с дроном:
+
+- загрузить миссию;
+- подать команду на старт миссии;
+- запросить телеметрию дрона.
+
+### Состав GCS
 
 Система состоит из шести компонентов:
 
@@ -196,25 +183,7 @@ DronePort - сервис наземной инфраструктуры для п
 - `drone_manager` - публикует команды в текущий stub-канал борта и обновляет состояние миссии/борта.
 - `drone_store` - хранит состояние дронов и последнюю телеметрию в Redis.
 
-Актуальные C4-диаграммы лежат в [systems/gcs/docs/c4/README.md](/home/kaitrye/DronePortGCS/systems/gcs/docs/c4/README.md).
-
-## Внешний контракт
-
-Сейчас у GCS есть три интеграционных контура:
-
-1. Эксплуатант публикует команды в `orchestrator`.
-2. GCS публикует команды в отдельный топик `drone`, который сейчас используется как заглушка вместо реального борта.
-3. Дрон, симулятор или telemetry-bridge публикует телеметрию в `drone_manager`.
-
-Важно:
-
-- полноценный request/response сейчас реализован только для `task.submit`;
-- `task.assign` и `task.start` работают как `fire-and-forget`, синхронный ответ не возвращается;
-- отдельного внешнего API для чтения миссий и состояния дронов в текущей реализации нет;
-- топик `drone` не является целевым боевым интерфейсом, это временный stub-канал;
-- `path_planner` пока строит stub-маршрут "туда и обратно" между двумя точками.
-
-## Топики и адресация
+### Топики и адресация
 
 Адресация GCS задается тремя переменными:
 
@@ -230,15 +199,14 @@ DronePort - сервис наземной инфраструктуры для п
 
 При значениях по умолчанию используются такие топики:
 
-| Назначение | Dot-topic | MQTT-topic |
-|------------|-----------|------------|
-| Эксплуатант -> Orchestrator | `v1.gcs.1.orchestrator` | `v1/gcs/1/orchestrator` |
-| GCS -> PathPlanner | `v1.gcs.1.path_planner` | `v1/gcs/1/path_planner` |
-| GCS -> MissionStore | `v1.gcs.1.mission_store` | `v1/gcs/1/mission_store` |
-| GCS -> MissionConverter | `v1.gcs.1.mission_converter` | `v1/gcs/1/mission_converter` |
-| GCS -> DroneManager | `v1.gcs.1.drone_manager` | `v1/gcs/1/drone_manager` |
-| GCS -> DroneStore | `v1.gcs.1.drone_store` | `v1/gcs/1/drone_store` |
-| GCS -> Drone stub | `drone` | `drone` |
+| Назначение | Топик |
+|------------|-------|
+| Эксплуатант -> Orchestrator | `v1.gcs.1.orchestrator` |
+| Внутренние запросы -> PathPlanner | `v1.gcs.1.path_planner` |
+| Внутренние запросы -> MissionStore | `v1.gcs.1.mission_store` |
+| Внутренние запросы -> MissionConverter | `v1.gcs.1.mission_converter` |
+| Дрон -> DroneManager | `v1.gcs.1.drone_manager` |
+| Внутренние запросы -> DroneStore | `v1.gcs.1.drone_store` |
 
 Для внешних систем сейчас обычно нужны только:
 
@@ -247,7 +215,7 @@ DronePort - сервис наземной инфраструктуры для п
 
 Топик `drone` в этот список не включен как стабильная точка интеграции, потому что он временный.
 
-## Протокол сообщений
+### Протокол сообщений
 
 Базовый формат сообщения:
 
@@ -286,9 +254,9 @@ DronePort - сервис наземной инфраструктуры для п
 
 При ошибке дополнительно приходит поле `error`.
 
-## Интеграция с эксплуатантом
+### Интеграция с эксплуатантом
 
-### 1. Постановка задачи
+#### 1. Постановка задачи
 
 Топик:
 
@@ -303,7 +271,7 @@ Action:
 - создать новую миссию;
 - построить маршрут;
 - сохранить миссию в `mission_store`;
-- вернуть `mission_id`, маршрут и подпись маршрута.
+- вернуть `mission_id` и построенный маршрут.
 
 Минимальный запрос:
 
@@ -314,20 +282,17 @@ Action:
   "correlation_id": "corr-submit-001",
   "reply_to": "operator/replies",
   "payload": {
-    "task_type": "delivery",
-    "start_point": {
-      "lat": 55.751244,
-      "lon": 37.618423,
-      "alt": 120
-    },
-    "end_point": {
-      "lat": 55.761244,
-      "lon": 37.628423,
-      "alt": 130
+    "task": {
+      "waypoints": [
+        {"lat": 55.751244, "lon": 37.618423, "alt": 120},
+        {"lat": 55.761244, "lon": 37.628423, "alt": 130}
+      ]
     }
   }
 }
 ```
+
+Сейчас `path_planner` принимает только `2` или `3` опорные точки в `payload.task.waypoints`.
 
 Успешный ответ:
 
@@ -348,8 +313,7 @@ Action:
       {"lat": 55.757944, "lon": 37.625123, "alt": 126.7},
       {"lat": 55.754644, "lon": 37.621823, "alt": 123.4},
       {"lat": 55.751244, "lon": 37.618423, "alt": 120.0}
-    ],
-    "signature": "sha256_of_waypoints"
+    ]
   }
 }
 ```
@@ -371,7 +335,7 @@ Action:
 
 Замечание: на уровне бизнес-логики ошибка маршрута сейчас возвращается внутри `payload`, а не через `success=false`.
 
-### 2. Назначение миссии на дрон
+#### 2. Назначение миссии на дрон
 
 Топик:
 
@@ -408,7 +372,7 @@ Action:
 - по сообщению `drone.upload_mission` в stub-топике `drone`;
 - по внутреннему состоянию миссии и дрона.
 
-### 3. Старт миссии
+#### 3. Старт миссии
 
 Топик:
 
@@ -422,7 +386,7 @@ Action:
 
 - отправить дрону команду старта миссии;
 - перевести миссию в `running`;
-- перевести дрон в `BUSY`.
+- перевести дрон в `busy`.
 
 Сообщение:
 
@@ -440,17 +404,17 @@ Action:
 
 Синхронный ответ не предусмотрен.
 
-## Временный stub-канал дрона
+### Временный stub-канал дрона
 
 Топик `drone` в текущей реализации используется как заглушка вместо настоящего канала связи с дроном. Этот интерфейс не стоит считать целевым внешним контрактом на будущее: он нужен для текущей разработки, тестов и эмуляции борта.
 
-### Сообщения, которые GCS публикует в stub-топик
+#### Сообщения, которые GCS публикует в stub-топик
 
 Топик:
 
 - `drone`
 
-#### 1. Загрузка миссии
+##### 1. Загрузка миссии
 
 Action:
 
@@ -470,7 +434,8 @@ Action:
 }
 ```
 
-Поле `mission` - это строка в формате `QGC WPL 110`.
+Во внутреннем сообщении `mission.upload` между `orchestrator` и `drone_manager` WPL передается в поле `wpl`.
+При публикации в stub-топик `drone` этот же WPL уходит наружу в поле `mission`.
 
 Формат строки WPL, который генерирует GCS:
 
@@ -487,7 +452,7 @@ QGC WPL 110
 - `autocontinue=1`;
 - параметры `p1...p4` берутся из `point.params`, если они были переданы, иначе `0`.
 
-#### 2. Старт миссии
+##### 2. Старт миссии
 
 Action:
 
@@ -504,9 +469,7 @@ Action:
 }
 ```
 
-Важно: в текущей реализации `mission_id` и `drone_id` в payload этой команды не передаются. Если дрону или внешнему bridge нужен этот контекст, его надо восстанавливать по `correlation_id` или расширять контракт в коде.
-
-### Телеметрия, которую GCS принимает от дрона или симулятора
+#### Телеметрия, которую GCS принимает от дрона или симулятора
 
 Топик:
 
@@ -544,9 +507,9 @@ Action:
 
 Синхронный ответ не предусмотрен.
 
-## Хранимые сущности и статусы
+### Хранимые сущности и статусы
 
-### Миссия
+#### Миссия
 
 Миссия хранится в Redis и содержит как минимум:
 
@@ -554,7 +517,6 @@ Action:
 {
   "mission_id": "m-abcdef123456",
   "waypoints": [],
-  "signature": "sha256",
   "status": "created",
   "assigned_drone": null,
   "created_at": "2026-03-17T10:00:00+00:00",
@@ -568,7 +530,7 @@ Action:
 - `assigned`
 - `running`
 
-### Дрон
+#### Дрон
 
 Состояние дрона хранится в Redis и может содержать:
 
@@ -590,9 +552,7 @@ Action:
 - `connected` - создан по первой телеметрии;
 - `available` - предусмотрен моделью и индексом хранилища;
 - `reserved` - миссия назначена, но еще не стартовала;
-- `BUSY` - миссия запущена.
-
-Важно: в коде статус `BUSY` хранится именно в верхнем регистре.
+- `busy` - миссия запущена.
 
 ## Запуск
 
@@ -602,11 +562,11 @@ Action:
 - Python `>= 3.12`
 - `pipenv`
 
-### 1. Поднять брокерную инфраструктуру
+### 1. Подготовить окружение
 
 ```bash
 cp docker/example.env docker/.env
-make docker-up
+make init
 ```
 
 По умолчанию в [docker/example.env](/home/kaitrye/DronePortGCS/docker/example.env) стоит:
@@ -614,37 +574,62 @@ make docker-up
 - `BROKER_TYPE=mqtt`
 - `INSTANCE_ID=1`
 
-### 2. Поднять GCS
+### 2. Поднять брокерную инфраструктуру
 
 ```bash
-cd systems/gcs
 make docker-up
+```
+
+### 3. Поднять GCS
+
+```bash
+make gcs-system-up
 ```
 
 Команда:
 
 - соберет `systems/gcs/.generated/docker-compose.yml`;
 - сгенерирует `systems/gcs/.generated/.env`;
-- поднимет `redis`, `mission_store`, `drone_store`, `mission_converter`, `orchestrator`, `path_planner`, `drone_manager` вместе с выбранным брокером.
+- поднимет `redis`, `mission_store`, `drone_store`, `mission_converter`, `orchestrator`, `path_planner`, `drone_manager` вместе с MQTT-брокером.
 
-Если нужен только prepare:
+### 4. Поднять DronePort
 
 ```bash
-cd systems/gcs
-make prepare
+make drone-port-system-up
+```
+
+Команда:
+
+- соберет `systems/drone_port/.generated/docker-compose.yml`;
+- сгенерирует `systems/drone_port/.generated/.env`;
+- поднимет `redis`, `state_store`, `port_manager`, `drone_registry`, `charging_manager`, `drone_manager`, `orchestrator`.
+
+### 5. Остановить сервисы
+
+```bash
+make gcs-system-down
+make drone-port-system-down
+make docker-down
+```
+
+Если нужен только prepare без запуска, используйте:
+
+```bash
+make -C systems/gcs prepare
+make -C systems/drone_port prepare
 ```
 
 ### Основные переменные окружения
 
 | Переменная | Значение по умолчанию | Назначение |
 |------------|------------------------|------------|
-| `BROKER_TYPE` | `mqtt` | Тип брокера: `mqtt` или `kafka` |
+| `BROKER_TYPE` | `mqtt` | Тип брокера. Сейчас поддерживается только `mqtt` |
 | `INSTANCE_ID` | `1` | Идентификатор экземпляра GCS |
 | `TOPIC_VERSION` | `v1` | Версия префикса топиков |
 | `GCS_SYSTEM_NAME` | `gcs` | Имя системы в адресации |
 | `MQTT_BROKER` | `mosquitto` / `localhost` | MQTT broker host |
 | `MQTT_PORT` | `1883` | MQTT broker port |
-| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Kafka bootstrap servers |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Зарезервировано под Kafka, в текущей реализации не используется |
 | `BROKER_USER` | из `ADMIN_USER` | Логин брокера |
 | `BROKER_PASSWORD` | из `ADMIN_PASSWORD` | Пароль брокера |
 | `MISSION_STORE_REDIS_DB` | `0` | Redis DB для миссий |
@@ -669,35 +654,3 @@ make unit-test
 ```bash
 make integration-test
 ```
-
-Системные тесты GCS лежат в:
-
-- [systems/gcs/tests/unit/test_orchestrator.py](/home/kaitrye/DronePortGCS/systems/gcs/tests/unit/test_orchestrator.py)
-- [systems/gcs/tests/unit/test_drone_manager.py](/home/kaitrye/DronePortGCS/systems/gcs/tests/unit/test_drone_manager.py)
-- [systems/gcs/tests/integration/test_gcs_integration.py](/home/kaitrye/DronePortGCS/systems/gcs/tests/integration/test_gcs_integration.py)
-
-## Структура репозитория
-
-```text
-broker/                 Шина сообщений и фабрика брокеров
-sdk/                    BaseComponent, BaseSystem, message protocol
-docker/                 Общая инфраструктура Kafka/MQTT
-scripts/                Генерация compose-файлов систем
-systems/gcs/            Исходный код НУС/GCS
-systems/gcs/src/
-  orchestrator/         Внешняя точка входа для эксплуатанта
-  path_planner/         Построение маршрута
-  mission_store/        Хранилище миссий
-  mission_converter/    Конвертация маршрута в WPL
-  drone_manager/        Публикация команд в stub-канал и прием телеметрии
-  drone_store/          Хранилище состояния дронов
-```
-
-## Что еще важно внешним системам
-
-- Если интеграция идет по MQTT, используйте slash-topic форму, например `v1/gcs/1/orchestrator`.
-- Если нужен синхронный ответ, обязательно передавайте `reply_to`.
-- Для `task.assign`, `task.start` и `telemetry.save` текущая реализация не возвращает response.
-- Топик `drone` сейчас является только заглушкой и не должен использоваться как долгосрочный внешний контракт.
-- Контракт чтения миссий/дронов наружу пока не выделен в отдельный API.
-- `path_planner` пока не использует реальную картографию и ограничения полета, а строит stub-маршрут по двум точкам.

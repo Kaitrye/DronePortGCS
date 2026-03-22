@@ -20,7 +20,7 @@ class ChargingManager(BaseComponent):
     ):
         super().__init__(
             component_id=component_id,
-            component_type="droneport",
+            component_type="drone_port",
             topic=ComponentTopics.CHARGING_MANAGER,
             bus=bus,
         )

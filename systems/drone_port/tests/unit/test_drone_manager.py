@@ -49,7 +49,7 @@ def test_takeoff_publishes_port_release_and_sitl_start(mock_bus, patch_drone_man
     assert result["port_id"] == "P-01"
     assert result["port_coordinates"] == {"lat": "55.751000", "lon": "37.617000"}
     assert mock_bus.publish.call_args_list[0].args == (
-        "v1.droneport.1.port_manager",
+        "v1.drone_port.1.port_manager",
         {
             "action": "free_slot",
             "payload": {"drone_id": "DR-1", "port_id": "P-01"},
