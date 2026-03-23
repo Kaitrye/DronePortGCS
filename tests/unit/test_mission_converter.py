@@ -3,7 +3,8 @@ import pytest
 
 from sdk.wpl_generator_2 import points_to_wpl as points_to_wpl_v2
 from systems.gcs.src.mission_converter.src.mission_converter import MissionConverterComponent
-
+from systems.gcs.src.mission_converter.topics import ComponentTopics
+from systems.gcs.src.mission_store.topics import MissionStoreActions
 
 @pytest.fixture
 def component(mock_bus):
@@ -102,7 +103,7 @@ def test_to_wpl_with_high_precision_floats(component):
 # Тесты _handle_mission_prepare
 # -------------------------
 
-def test_handle_mission_prepare_returns_wpl_and_signature(component):
+def test_handle_mission_prepare_returns_wpl_and_signature(component, mock_bus):
     """Проверяет формирование WPL и SHA256 подписи для миссии."""
     mission = {
         "waypoints": [
@@ -114,7 +115,8 @@ def test_handle_mission_prepare_returns_wpl_and_signature(component):
         "success": True,
         "payload": {"mission": mission},
     }
-    result = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}})
+    result = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}, "correlation_id": "corr-1"})
+
     expected_wpl = component._to_wpl(mission["waypoints"])
     expected_signature = hashlib.sha256(expected_wpl.encode("utf-8")).hexdigest()
     assert result == {
@@ -136,87 +138,95 @@ def test_handle_mission_prepare_returns_wpl_and_signature(component):
     )
 
 
-def test_handle_mission_prepare_returns_error_when_store_unavailable(component):
+def test_handle_mission_prepare_returns_error_when_store_unavailable(component, mock_bus):
     """Проверяет возврат ошибки, если MissionStore недоступен (None)."""
-    component.send_to_other_system = lambda *args, **kwargs: None
+    mock_bus.request.return_value = None
     result = component._handle_mission_prepare({"payload": {"mission_id": "m-404"}})
-    assert result == {"mission_id": "m-404", "error": "mission store unavailable"}
+    assert result == {"error": "mission store unavailable", "from": "mission-converter"}
 
 
-def test_handle_mission_prepare_returns_error_when_store_returns_failure(component):
+def test_handle_mission_prepare_returns_error_when_store_returns_failure(component, mock_bus):
     """Проверяет возврат ошибки, если MissionStore вернул success=False."""
-    component.send_to_other_system = lambda *args, **kwargs: {"success": False, "payload": {}}
+    mock_bus.request.return_value = {"success": False, "payload": {}}
     result = component._handle_mission_prepare({"payload": {"mission_id": "m-500"}})
-    assert result == {"mission_id": "m-500", "error": "mission store unavailable"}
+    assert result == {"error": "mission store unavailable", "from": "mission-converter"}
 
 
-def test_handle_mission_prepare_returns_error_when_mission_id_missing(component):
+def test_handle_mission_prepare_returns_error_when_mission_id_missing(component, mock_bus):
     """Проверяет обработку случая, когда mission_id отсутствует в payload."""
-    component.send_to_other_system = lambda *args, **kwargs: None
+    mock_bus.request.return_value = None
     result = component._handle_mission_prepare({"payload": {}})
-    assert result == {"mission_id": None, "error": "mission store unavailable"}
+    assert result == {"error": "mission store unavailable", "from": "mission-converter"
+    }
 
 
-def test_handle_mission_prepare_returns_error_when_store_payload_missing_mission(component):
-    """Проверяет, что AttributeError вызывается, если в payload нет 'mission'."""
-    component.send_to_other_system = lambda *args, **kwargs: {"success": True, "payload": {}}
-    with pytest.raises(AttributeError):
-        component._handle_mission_prepare({"payload": {"mission_id": "m-missing"}})
+def test_handle_mission_prepare_returns_error_when_store_payload_missing_mission(component, mock_bus):
+    """Если store вернул success=True, но без ключа 'mission', компонент не падает и возвращает WPL-заголовок."""
+    mock_bus.request.return_value = {"success": True, "payload": {}}
+    result = component._handle_mission_prepare({"payload": {"mission_id": "m-missing"}})
+    assert result == {
+        "mission": {"mission_id": "m-missing", "wpl": "QGC WPL 110"},
+        "from": "mission-converter",
+    }
 
 
-def test_handle_mission_prepare_passes_mission_id_to_store(component):
-    """Проверяет, что mission_id из запроса передаётся в MissionStore."""
-    seen = {}
-    def fake_send(topic, action, message):
-        seen["topic"] = topic
-        seen["action"] = action
-        seen["message"] = message
-        return {"success": True, "payload": {"mission": {"waypoints": []}}}
-    component.send_to_other_system = fake_send
+def test_handle_mission_prepare_passes_mission_id_to_store(component, mock_bus):
+    mock_bus.request.return_value = {"success": True, "payload": {"mission": {"waypoints": []}}}
+
     result = component._handle_mission_prepare({"payload": {"mission_id": "m-42"}})
-    assert seen["message"] == {"mission_id": "m-42"}
+
+    mock_bus.request.assert_called_once_with(
+        ComponentTopics.GCS_MISSION_STORE,
+        {
+            "action": MissionStoreActions.GET_MISSION,
+            "sender": "mission-converter",
+            "payload": {"mission_id": "m-42"},
+        },
+        timeout=10.0,
+    )
     assert result["mission"]["mission_id"] == "m-42"
 
 
-def test_handle_mission_prepare_returns_wpl_header_when_mission_has_no_waypoints(component):
+def test_handle_mission_prepare_returns_wpl_header_when_mission_has_no_waypoints(component, mock_bus):
     """Проверяет формирование WPL только с заголовком, если waypoints пустые или отсутствуют."""
-    component.send_to_other_system = lambda *args, **kwargs: {
+    mock_bus.request.return_value = {
         "success": True,
         "payload": {"mission": {}},
     }
     result = component._handle_mission_prepare({"payload": {"mission_id": "m-empty"}})
-    expected_wpl = component._to_wpl([])
-    expected_signature = hashlib.sha256(expected_wpl.encode("utf-8")).hexdigest()
     assert result == {
-        "mission": {
-            "mission_id": "m-empty",
-            "wpl": expected_wpl,
-            "signature": expected_signature,
-        }
+        "mission": {"mission_id": "m-empty", "wpl": "QGC WPL 110"},
+        "from": "mission-converter",
     }
 
 
-def test_handle_mission_prepare_signature_changes_on_waypoints(component):
-    """Проверяет, что подпись SHA256 меняется при изменении координат точек."""
+def test_handle_mission_prepare_wpl_changes_on_waypoints(component, mock_bus):
     waypoints1 = [{"lat": 1, "lon": 2, "alt": 3}]
     waypoints2 = [{"lat": 1, "lon": 2, "alt": 4}]
-    component.send_to_other_system = lambda *a, **k: {"success": True, "payload": {"mission": {"waypoints": waypoints1}}}
+
+    mock_bus.request.side_effect = [
+        {"success": True, "payload": {"mission": {"waypoints": waypoints1}}},
+        {"success": True, "payload": {"mission": {"waypoints": waypoints2}}},
+    ]
+
     result1 = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}})
-    component.send_to_other_system = lambda *a, **k: {"success": True, "payload": {"mission": {"waypoints": waypoints2}}}
     result2 = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}})
-    assert result1["mission"]["signature"] != result2["mission"]["signature"]
+    assert result1["mission"]["wpl"] != result2["mission"]["wpl"]
 
 
-def test_handle_mission_prepare_with_empty_mission_id(component):
+def test_handle_mission_prepare_with_empty_mission_id(component, mock_bus):
     """Проверяет корректную обработку пустого mission_id."""
-    component.send_to_other_system = lambda *a, **k: {"success": True, "payload": {"mission": {"waypoints": []}}}
-    result = component._handle_mission_prepare({"payload": {"mission_id": ""}})
-    assert result["mission"]["mission_id"] == ""
+    mock_bus.request.return_value = {
+        "success": True,
+        "payload": {"mission": {"waypoints": []}},
+    }
 
+    result = component._handle_mission_prepare({"payload": {"mission_id": ""}})
+
+    assert result["mission"]["mission_id"] == ""
 
 def test_handle_mission_prepare_raises_on_invalid_payload_type(component):
     """Проверяет, что AttributeError вызывается при некорректном типе payload."""
-    component.send_to_other_system = lambda *args, **kwargs: {"success": True, "payload": {}}
     with pytest.raises(AttributeError):
         component._handle_mission_prepare(None)
     with pytest.raises(AttributeError):

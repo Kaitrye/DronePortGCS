@@ -100,14 +100,17 @@ class MissionConverterComponent(BaseComponent):
             points = []
         if not points:
             wpl = self._to_wpl([])
-            logger.info("[%s] mission_prepare generated_wpl mission_id=%s points=%s", self.component_id, mission_id, len(points))
 
         else:
             try:
                 wpl = points_to_wpl_v2(points)
-                logger.info("[%s] mission_prepare generated_wpl mission_id=%s points=%s", self.component_id, mission_id, len(points))
             except ValueError:
                 wpl = self._to_wpl(points)
+                
+        logger.info("[%s] mission_prepare generated_wpl mission_id=%s points=%s", self.component_id, mission_id, len(points))
+
+        if isinstance(wpl, str):
+            wpl = wpl.rstrip("\n")
 
         return {
             "mission": {
