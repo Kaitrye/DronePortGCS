@@ -56,7 +56,7 @@ def test_to_wpl_formats_header_and_waypoints(component):
     result = component._to_wpl(points)
     lines = result.splitlines()
     assert lines[0] == "QGC WPL 110"
-    assert lines[1] == "0\t1\t3\t22\t7\t0\t0\t0\t55.1\t37.2\t100\t1"
+    assert lines[1] == "0\t1\t3\t16\t0\t0\t0\t0\t55.1\t37.2\t100\t1"
     assert lines[2] == "1\t0\t3\t16\t0\t0\t0\t0\t55.2\t37.3\t110\t1"
 
 
