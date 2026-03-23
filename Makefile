@@ -37,7 +37,7 @@ unit-test:
 	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
 		tests/unit/ \
 		components/dummy_component/tests/ \
-		systems/dummy_system/tests/test_dummy_unit.py \
+		systems/drone_port/tests/unit/ \
 		systems/gcs/tests/unit/ \
 		-v
 
@@ -46,7 +46,7 @@ unit-test-with-coverage:
 	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
 		tests/unit/ \
 		components/dummy_component/tests/ \
-		systems/dummy_system/tests/test_dummy_unit.py \
+		systems/drone_port/tests/unit/ \
 		systems/gcs/tests/unit/ \
 		--cov=systems/gcs/src \
 		--cov-report=html:$(COVERAGE_HTML_DIR) \
