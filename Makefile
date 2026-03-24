@@ -56,7 +56,7 @@ unit-test-with-coverage:
 		--cov-report=html:$(COVERAGE_HTML_DIR) \
 		--cov-report=term-missing \
 		-v
-		
+
 integration-test: docker-up gcs-system-up drone-port-system-up
 	@$(MAKE) integration-test-run
 	-$(MAKE) drone-port-system-down
