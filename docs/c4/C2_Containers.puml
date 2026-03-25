@@ -2,84 +2,61 @@
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 LAYOUT_LEFT_RIGHT()
 
-System_Ext(operator_system, "Эксплуатант")
-System_Ext(drone, "Дроны")
+System_Ext(operator_system, "Эксплуатант", "Внешняя автоматизированная система постановки задач и запуска миссий")
+System_Ext(drone, "Дрон", "Борт, принимающий WPL и возвращающий телеметрию по запросу")
 
 System_Boundary(gcs, "НУС") {
-  Container(orchestrator, "Orchestrator", "Руководство работой всех компонентов системы")
-  Container(mission, "MissionManager", "Python service", "Конвертация маршрута в WPL")
-  Container(fleet, "GroupManager", "Формирование групп и подмиссий")
-  Container(drone_manager, "DroneManager", "Взаимодействие с дронами")
-  Container(telemetry, "TelemetryManager", "Python service", "Прием телеметрии и проверка подписей")
-  Container(store_manager, "StoreManager", "Python service", "Обертка над Redis с API для других сервисов")
+  Container(orchestrator, "Orchestrator", "Python service", "Внешняя точка входа: принимает task.submit/task.assign/task.start и координирует сценарий")
+  Container(path_planner, "PathPlanner", "Python service", "Строит маршрут по 2 или 3 опорным точкам и инициирует сохранение миссии")
+  Container(mission_store, "MissionStore", "Python service", "Хранит миссии и их статусы в Redis DB 0")
+  Container(mission_converter, "MissionConverter", "Python service", "Читает миссию и конвертирует маршрут в QGC WPL 110")
+  Container(drone_manager, "DroneManager", "Python service", "Отправляет команды борту и обновляет состояние миссии и дрона")
+  Container(drone_store, "DroneStore", "Python service", "Хранит состояние борта и последнюю телеметрию в Redis DB 1")
 
-  ContainerDb(redis, "Redis", "State storage", "mission, submission, group, drone state, telemetry")
+  ContainerDb(redis, "Redis", "State storage", "Миссии, статусы миссий, состояние дронов, последняя телеметрия")
 }
 
-note right of fleet
-  GroupManager:
-  - формирует группу из выбранных дронов
-  - делит WPL миссии на подмиссии поровну по точкам
-  - сохраняет подмиссии с той же подписью, что у исходной миссии
-  - возвращает group_id и массив submission_id
+Rel(operator_system, orchestrator, "task.submit / task.assign / task.start")
+
+Rel(orchestrator, path_planner, "path.plan", "request")
+Rel(path_planner, mission_store, "store.save_mission", "publish")
+
+Rel(orchestrator, mission_converter, "mission.prepare", "request")
+Rel(mission_converter, mission_store, "store.get_mission", "request")
+
+Rel(orchestrator, drone_manager, "mission.upload / mission.start", "publish")
+Rel(drone_manager, drone, "drone.upload_mission / drone.mission.start / telemetry.get")
+Rel(drone, drone_manager, "telemetry")
+
+Rel(drone_manager, mission_store, "store.update_mission", "publish")
+Rel(drone_manager, drone_store, "store.update_drone / telemetry", "publish")
+
+Rel(mission_store, redis, "Чтение/запись миссий")
+Rel(drone_store, redis, "Чтение/запись состояния дронов")
+
+note right of drone_manager
+  DroneManager:
+  - после upload резервирует дрон и помечает миссию как assigned
+  - после start переводит миссию в running и дрон в busy
+  - запрашивает telemetry.get у борта
+  - сохраняет полученную телеметрию в DroneStore
 end note
 
-Rel(operator_system, orchestrator, "task.submit / task.assign / task.start(group_id)")
-
-Rel(orchestrator, mission, "mission.prepare")
-Rel(orchestrator, fleet, "group.create")
-Rel(orchestrator, drone_manager, "mission.upload / mission.start")
-Rel(orchestrator, store_manager, "drone.list_available / group.get_drones @startuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
-LAYOUT_LEFT_RIGHT()
-
-System_Ext(operator_system, "Эксплуатант")
-System_Ext(drone, "Дроны")
-
-System_Boundary(gcs, "НУС") {
-  Container(orchestrator, "Orchestrator", "Распределение обязанностей между компонентами")
-  Container(mission, "MissionManager", "Конвертация маршрута в WPL, генерация подписи")
-  Container(fleet, "GroupManager", "Формирование групп и подмиссий")
-  Container(drone_manager, "DroneManager", "Загрузка миссий на дронов и подача команд на старт")
-  Container(telemetry, "TelemetryManager", "Прием телеметрии и проверка подписей")
-  Container(store_manager, "StoreManager", "Обертка над Redis с API для других сервисов")
-
-  ContainerDb(redis, "Redis", "State storage", "mission, submission, group, drone state, telemetry")
-}
-
-note right of fleet
-  GroupManager:
-  - формирует группу из выбранных дронов
-  - делит WPL миссии на подмиссии поровну по точкам
-  - сохраняет подмиссии с той же подписью, что у исходной миссии
-  - возвращает group_id и массив submission_id
+note right of path_planner
+  PathPlanner:
+  - принимает 2 или 3 seed points
+  - генерирует маршрут
+  - получает mission_id от Orchestrator
+  - сохраняет миссию со статусом created
 end note
 
-Rel(operator_system, orchestrator, "task.submit / task.assign / task.start(group_id)")
+note bottom of gcs
+  Цели безопасности НУС:
+  - ЦБ-1: для планирования перемещения используются только подлинные заказы
+  - ЦБ-2: конфиденциальная информация доступна только авторизованным пользователям
+  - ЦБ-3: выполняются только аутентичные и авторизованные команды
+  - ЦБ-4: НУС передает целостную и подлинную критичную информацию
+  Источник: origin/security-analysis, docs/GCS_SECURITY_ANALYSIS.md
+end note
 
-Rel(orchestrator, mission, "mission.prepare")
-Rel(orchestrator, fleet, "group.create")
-Rel(orchestrator, drone_manager, "mission.upload / mission.start")
-Rel(orchestrator, store_manager, "drone.list_available / group.get_drones / drone.status_update")
-
-Rel(mission, store_manager, "mission.save (signed)")
-Rel(fleet, store_manager, "group.create / mission.get / submission.save")
-Rel(telemetry, store_manager, "telemetry.save")
-Rel(drone_manager, store_manager, "submission.get")
-Rel(drone, telemetry, "telemetry.push (signed)")
-
-Rel(store_manager, redis, "прямые запросы")
-
-Rel(drone_manager, drone, "mission.upload / mission.start")
-@enduml/ drone.status_update")
-
-Rel(mission, store_manager, "mission.save")
-Rel(fleet, store_manager, "group.create / mission.get / submission.save")
-Rel(telemetry, store_manager, "telemetry.save")
-Rel(drone_manager, store_manager, "submission.get")
-Rel(drone, telemetry, "telemetry.push (signed)")
-
-Rel(store_manager, redis, "Прямые запросы к Redis (без брокера)")
-
-Rel(drone_manager, drone, "mission.upload / mission.start")
 @enduml
