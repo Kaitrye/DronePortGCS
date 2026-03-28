@@ -498,7 +498,8 @@ class DockerInteractiveDemo:
         os.environ.update(self._client_env())
         self.bus = create_system_bus(client_id=self.client_id)
         self.bus.start()
-        self.bus.subscribe(DroneTopics.DRONE, self._capture_drone_message)
+        for topic in DroneTopics.all():
+            self.bus.subscribe(topic, self._capture_drone_message)
         self.bus.subscribe("sitl", self._capture_sitl_message)
         time.sleep(2)
         return "SystemBus connected and observers subscribed"
