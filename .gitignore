@@ -11,6 +11,8 @@ __pycache__
 *.pyc
 *.pyc
 .generated/
+.codex
+cloudflared-linux-amd64.deb
 
 .coverage
 coverage.xml
