@@ -520,6 +520,19 @@ def mission():
     return _execute("mission", run)
 
 
+@app.post("/api/action/drone-state")
+def drone_state():
+    payload = _json_payload()
+
+    def run():
+        drone_id = _optional_text(payload.get("drone_id"))
+        if not drone_id:
+            raise ValueError("drone_id is required")
+        return demo.get_drone_state(drone_id)
+
+    return _execute("drone-state", run)
+
+
 @app.post("/api/action/snapshot")
 def snapshot():
     payload = _json_payload()

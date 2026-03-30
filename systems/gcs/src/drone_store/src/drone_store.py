@@ -78,8 +78,16 @@ class DroneStoreComponent(BaseRedisStoreComponent):
 
 
     def _register_handlers(self):
+        self.register_handler(DroneStoreActions.GET_DRONE, self._handle_get_drone)
         self.register_handler(DroneStoreActions.UPDATE_DRONE, self._handle_update_drone)
         self.register_handler(DroneStoreActions.SAVE_TELEMETRY, self._handle_save_telemetry)
+
+    def _handle_get_drone(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        drone_id = message.get("payload", {}).get("drone_id")
+        return {
+            "from": self.component_id,
+            "drone": self._read_drone(drone_id),
+        }
 
 
     def _handle_save_telemetry(self, message: Dict[str, Any]) -> Dict[str, Any]:

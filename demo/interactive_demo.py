@@ -30,6 +30,10 @@ from systems.gcs.src.mission_store.topics import (
     ComponentTopics as MissionStoreTopics,
     MissionStoreActions,
 )
+from systems.gcs.src.drone_store.topics import (
+    ComponentTopics as DroneStoreTopics,
+    DroneStoreActions,
+)
 from systems.gcs.src.orchestrator.topics import (
     ComponentTopics as GCSOrchestratorTopics,
     OrchestratorActions as GCSOrchestratorActions,
@@ -124,7 +128,7 @@ class DockerInteractiveDemo:
 
         output = "".join(lines)
         if return_code != 0:
-            raise subprocess.CalledProcessError(return_code, command, output=output, stdout=output, stderr="")
+            raise subprocess.CalledProcessError(return_code, command, output=output)
         return output
 
     def _compose(self, compose_file: Path, env_file: Path, args: List[str], cwd: Path | None = None) -> str:
@@ -687,6 +691,14 @@ class DockerInteractiveDemo:
             timeout=15.0,
         )
 
+    def get_drone_state(self, drone_id: str) -> Optional[Dict[str, Any]]:
+        return self.request(
+            DroneStoreTopics.GCS_DRONE_STORE,
+            DroneStoreActions.GET_DRONE,
+            {"drone_id": drone_id},
+            timeout=10.0,
+        )
+
     def wait_for_mission_status(self, mission_id: str, expected_status: str, timeout: int = 30) -> Optional[Dict[str, Any]]:
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -748,4 +760,5 @@ class DockerInteractiveDemo:
             snapshot["mission"] = self.get_mission(mission_id)
         if drone_id:
             snapshot["drone_id"] = drone_id
+            snapshot["drone"] = self.get_drone_state(drone_id)
         return snapshot

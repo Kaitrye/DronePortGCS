@@ -387,7 +387,8 @@
         margin-left: auto;
       }
 
-      #map {
+      #map,
+      #tracking_map {
         width: 100%;
         height: 100%;
         min-height: 360px;
@@ -541,6 +542,7 @@
       </div>
       <div class="tabs">
         <button class="tab active" type="button" data-page-target="flight_page">Полетные данные</button>
+        <button class="tab" type="button" data-page-target="tracking_page">Трекинг</button>
         <button class="tab" type="button" data-page-target="schemes_page">Схемы</button>
         <button class="tab" type="button" data-page-target="security_page">Безопасность</button>
         <button class="tab" type="button" data-page-target="status_page">Статус</button>
@@ -677,6 +679,84 @@
           </div>
           <div id="map"></div>
         </section>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="tracking_page">
+        <div class="page-grid">
+          <aside class="sidebar">
+            <section class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Трекинг Дрона</div>
+                <div class="panel-meta">Позиция по последней телеметрии из DroneStore</div>
+              </div>
+              <div class="panel-body">
+                <div class="field">
+                  <label for="tracking_drone_id">ID дрона</label>
+                  <input id="tracking_drone_id" value="drone-demo-1">
+                </div>
+                <div class="button-grid" style="margin-top: 10px;">
+                  <button class="ghost" id="tracking_refresh_btn" type="button">Обновить Позицию</button>
+                  <button class="ghost" id="tracking_center_btn" type="button">Центрировать Карту</button>
+                </div>
+                <div class="hint" style="margin-top: 10px;">
+                  Вкладка опрашивает DroneStore автоматически, пока она открыта.
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Последняя Телеметрия</div>
+                <div class="panel-meta">Краткое состояние борта</div>
+              </div>
+              <div class="panel-body">
+                <div class="status-row">
+                  <div class="metric">
+                    <div class="metric-label">Статус</div>
+                    <div class="metric-value" id="tracking_status_value">нет данных</div>
+                  </div>
+                  <div class="metric">
+                    <div class="metric-label">Батарея</div>
+                    <div class="metric-value" id="tracking_battery_value">-</div>
+                  </div>
+                </div>
+                <div class="status-row" style="margin-top: 12px;">
+                  <div class="metric">
+                    <div class="metric-label">Широта</div>
+                    <div class="metric-value" id="tracking_lat_value">-</div>
+                  </div>
+                  <div class="metric">
+                    <div class="metric-label">Долгота</div>
+                    <div class="metric-value" id="tracking_lon_value">-</div>
+                  </div>
+                </div>
+                <div class="status-row" style="margin-top: 12px;">
+                  <div class="metric">
+                    <div class="metric-label">Высота</div>
+                    <div class="metric-value" id="tracking_alt_value">-</div>
+                  </div>
+                  <div class="metric">
+                    <div class="metric-label">Обновлено</div>
+                    <div class="metric-value" id="tracking_updated_value">-</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </aside>
+
+          <section class="workspace">
+            <section class="panel map-wrap">
+              <div class="panel-header">
+                <div class="panel-title">Карта Трекинга</div>
+                <div class="panel-meta">Маркер обновляется при поступлении новой телеметрии</div>
+              </div>
+              <div class="map-toolbar">
+                <div class="hint" id="tracking_hint">Откройте вкладку после старта миссии, чтобы видеть последние координаты дрона.</div>
+              </div>
+              <div id="tracking_map"></div>
+            </section>
           </section>
         </div>
       </section>
@@ -939,6 +1019,14 @@
       const metricDrone = document.getElementById("metric_drone");
       const metricMission = document.getElementById("metric_mission");
       const metricWaypoints = document.getElementById("metric_waypoints");
+      const trackingDroneInput = document.getElementById("tracking_drone_id");
+      const trackingStatusValue = document.getElementById("tracking_status_value");
+      const trackingBatteryValue = document.getElementById("tracking_battery_value");
+      const trackingLatValue = document.getElementById("tracking_lat_value");
+      const trackingLonValue = document.getElementById("tracking_lon_value");
+      const trackingAltValue = document.getElementById("tracking_alt_value");
+      const trackingUpdatedValue = document.getElementById("tracking_updated_value");
+      const trackingHint = document.getElementById("tracking_hint");
       const waypointList = document.getElementById("waypoint_list");
       const routeFields = document.getElementById("route_fields");
       const assignFields = document.getElementById("assign_fields");
@@ -955,19 +1043,32 @@
         { lat: 55.752400, lon: 37.622000, alt: 120.0 }
       ];
       const map = L.map("map", { zoomControl: true }).setView([55.751244, 37.618423], 14);
+      const trackingMap = L.map("tracking_map", { zoomControl: true }).setView([55.751244, 37.618423], 14);
       const routeLayer = L.layerGroup().addTo(map);
+      const trackingLayer = L.layerGroup().addTo(trackingMap);
       let activePoll = null;
+      let telemetryPoll = null;
       let missionFlowStep = "submit";
+      let trackingMarker = null;
+      let trackingTrail = null;
+      let trackingPositions = [];
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(trackingMap);
 
       function syncMetrics() {
         metricDrone.textContent = missionFlowStep === "submit" ? "не задан" : (droneIdInput.value || "не задан");
         metricMission.textContent = missionIdInput.value || "не задана";
         metricWaypoints.textContent = String(waypointList.querySelectorAll(".waypoint-row").length || 0);
+        if (!trackingDroneInput.dataset.userEdited) {
+          trackingDroneInput.value = droneIdInput.value || "drone-demo-1";
+        }
       }
 
       function setStatus(kind, text) {
@@ -996,6 +1097,15 @@
           setTimeout(() => {
             map.invalidateSize();
           }, 0);
+        }
+        if (pageId === "tracking_page") {
+          setTimeout(() => {
+            trackingMap.invalidateSize();
+            refreshTracking();
+          }, 0);
+          startTelemetryPolling();
+        } else {
+          stopTelemetryPolling();
         }
       }
 
@@ -1180,6 +1290,121 @@
         }
       }
 
+      function stopTelemetryPolling() {
+        if (telemetryPoll) {
+          clearInterval(telemetryPoll);
+          telemetryPoll = null;
+        }
+      }
+
+      function resetTrackingMap(message) {
+        if (trackingMarker) {
+          trackingLayer.removeLayer(trackingMarker);
+          trackingMarker = null;
+        }
+        if (trackingTrail) {
+          trackingLayer.removeLayer(trackingTrail);
+          trackingTrail = null;
+        }
+        trackingPositions = [];
+        if (message) {
+          trackingHint.textContent = message;
+        }
+      }
+
+      function updateTrackingPanel(drone) {
+        const position = drone?.last_position || {};
+        trackingStatusValue.textContent = drone?.status || "нет данных";
+        trackingBatteryValue.textContent = drone?.battery != null ? `${drone.battery}%` : "-";
+        trackingLatValue.textContent = position.latitude != null ? Number(position.latitude).toFixed(6) : "-";
+        trackingLonValue.textContent = position.longitude != null ? Number(position.longitude).toFixed(6) : "-";
+        trackingAltValue.textContent = position.altitude != null ? `${Number(position.altitude).toFixed(1)} м` : "-";
+        trackingUpdatedValue.textContent = drone?.updated_at || drone?.connected_at || "-";
+      }
+
+      function updateTrackingMap(drone) {
+        const position = drone?.last_position;
+        if (!position || position.latitude == null || position.longitude == null) {
+          trackingHint.textContent = "Телеметрия еще не содержит координат. Маркер появится после первого ответа от дрона.";
+          return;
+        }
+
+        const latLng = [position.latitude, position.longitude];
+        trackingHint.textContent = "Карта показывает последнюю сохраненную позицию дрона и накопленный трек за текущую сессию.";
+
+        if (!trackingMarker) {
+          trackingMarker = L.marker(latLng).addTo(trackingLayer);
+          trackingMarker.bindTooltip("Дрон", { direction: "top" });
+        } else {
+          trackingMarker.setLatLng(latLng);
+        }
+
+        const last = trackingPositions[trackingPositions.length - 1];
+        if (!last || last[0] !== latLng[0] || last[1] !== latLng[1]) {
+          trackingPositions.push(latLng);
+        }
+
+        if (trackingTrail) {
+          trackingLayer.removeLayer(trackingTrail);
+        }
+        trackingTrail = L.polyline(trackingPositions, {
+          color: "#d04a2b",
+          weight: 3,
+          opacity: 0.85
+        }).addTo(trackingLayer);
+      }
+
+      async function refreshTracking(options = {}) {
+        const droneId = (trackingDroneInput.value || "").trim();
+        if (!droneId) {
+          trackingHint.textContent = "Укажите ID дрона для отслеживания.";
+          updateTrackingPanel(null);
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/action/drone-state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ drone_id: droneId })
+          });
+          const data = await response.json();
+
+          if (!response.ok || !data.ok) {
+            trackingHint.textContent = data.error || "Не удалось получить состояние дрона.";
+            updateTrackingPanel(null);
+            return;
+          }
+
+          const drone = data?.result?.payload?.drone || data?.result?.drone;
+          if (!drone) {
+            resetTrackingMap(`DroneStore пока не знает дрон "${droneId}". Проверьте ID и убедитесь, что миссия уже назначена и запущена для этого борта.`);
+            updateTrackingPanel(null);
+            return;
+          }
+
+          updateTrackingPanel(drone || null);
+          updateTrackingMap(drone || null);
+
+          if (options.center && drone?.last_position) {
+            trackingMap.setView(
+              [drone.last_position.latitude, drone.last_position.longitude],
+              Math.max(trackingMap.getZoom(), 15)
+            );
+          }
+        } catch (error) {
+          trackingHint.textContent = String(error);
+          updateTrackingPanel(null);
+        }
+      }
+
+      function startTelemetryPolling() {
+        stopTelemetryPolling();
+        telemetryPoll = setInterval(() => {
+          refreshTracking();
+        }, 2000);
+      }
+
       async function pollJob(jobId, label, button) {
         stopPolling();
         activePoll = setInterval(async () => {
@@ -1344,10 +1569,9 @@
       });
 
       document.getElementById("track_external_btn").addEventListener("click", () => {
-        setStatus("", "Внешнее отслеживание");
-        setOutputMessage(
-          "Миссия запущена.\n\nПока отслеживайте путь дрона во внешнем интерфейсе полета.\nВ этой веб-панели живое воспроизведение телеметрии еще не реализовано."
-        );
+        openPage("tracking_page");
+        setStatus("", "Трекинг дрона");
+        setOutputMessage("Открыта вкладка трекинга. Карта будет обновляться по мере поступления телеметрии в DroneStore.");
       });
 
       document.getElementById("restart_flow_btn").addEventListener("click", () => {
@@ -1377,6 +1601,23 @@
         });
       });
 
+      trackingDroneInput.addEventListener("input", () => {
+        trackingDroneInput.dataset.userEdited = "1";
+      });
+
+      document.getElementById("tracking_refresh_btn").addEventListener("click", () => {
+        refreshTracking({ center: true });
+      });
+
+      document.getElementById("tracking_center_btn").addEventListener("click", () => {
+        const last = trackingPositions[trackingPositions.length - 1];
+        if (last) {
+          trackingMap.setView(last, Math.max(trackingMap.getZoom(), 15));
+        } else {
+          refreshTracking({ center: true });
+        }
+      });
+
       map.on("click", (event) => {
         if (missionFlowStep !== "submit") {
           setStatus("err", "Маршрут зафиксирован");
@@ -1404,6 +1645,7 @@
       setTimeout(() => {
         map.invalidateSize();
         fitRoute();
+        trackingMap.invalidateSize();
       }, 0);
     </script>
   </body>
