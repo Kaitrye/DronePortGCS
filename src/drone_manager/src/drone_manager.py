@@ -36,6 +36,7 @@ class DroneManagerComponent(BaseComponent):
         target_action: str,
         data: Dict[str, Any],
         correlation_id: str | None = None,
+        timeout: float = 10.0,
     ) -> Dict[str, Any] | None:
         message = {
             "action": DroneActions.PROXY_REQUEST,
@@ -54,14 +55,32 @@ class DroneManagerComponent(BaseComponent):
         response = self.bus.request(
             DroneTopics.SECURITY_MONITOR,
             message,
-            timeout=10.0,
+            timeout=timeout,
         )
         if not isinstance(response, dict):
             return None
+        return self._unwrap_target_response(response)
+
+    def _unwrap_target_response(self, response: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        if not isinstance(response, dict):
+            return None
+
         target_response = response.get("target_response")
-        return target_response if isinstance(target_response, dict) else response
+        if isinstance(target_response, dict):
+            return target_response
+
+        payload = response.get("payload")
+        if not isinstance(payload, dict):
+            return response
+
+        nested_target_response = payload.get("target_response")
+        if isinstance(nested_target_response, dict):
+            return nested_target_response
+
+        return response
 
     def _response_payload(self, response: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        response = self._unwrap_target_response(response)
         if not isinstance(response, dict):
             return None
         payload = response.get("payload")
@@ -91,8 +110,6 @@ class DroneManagerComponent(BaseComponent):
             },
             correlation_id=correlation_id,
         )
-        if not self._response_ok(upload_response):
-            return None
 
         mission_update_message = {
             "action": MissionStoreActions.UPDATE_MISSION,
@@ -131,36 +148,35 @@ class DroneManagerComponent(BaseComponent):
 
         return None
 
-    def _extract_telemetry(self, response: Any) -> Dict[str, Any] | None:
-        if not isinstance(response, dict):
+    def _normalize_telemetry(self, response: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        payload = self._response_payload(response)
+        if not isinstance(payload, dict):
             return None
 
-        if isinstance(response.get("target_response"), dict):
-            return self._extract_telemetry(response["target_response"])
+        if isinstance(payload, dict) and isinstance(payload.get("telemetry"), dict):
+            return payload["telemetry"]
 
-        if isinstance(response.get("payload"), dict) and isinstance(response["payload"].get("telemetry"), dict):
-            return response["payload"]["telemetry"]
+        navigation = payload.get("navigation")
+        if not isinstance(navigation, dict):
+            return None
 
-        if isinstance(response.get("payload"), dict):
-            payload = response["payload"]
-            navigation = payload.get("navigation")
-            if isinstance(navigation, dict):
-                telemetry: Dict[str, Any] = {}
-                if navigation.get("lat") is not None:
-                    telemetry["latitude"] = navigation.get("lat")
-                if navigation.get("lon") is not None:
-                    telemetry["longitude"] = navigation.get("lon")
-                if navigation.get("alt_m") is not None:
-                    telemetry["altitude"] = navigation.get("alt_m")
-                motors = payload.get("motors")
-                if isinstance(motors, dict) and motors.get("battery") is not None:
-                    telemetry["battery"] = motors.get("battery")
-                return telemetry or None
+        nav_state = navigation.get("payload") if isinstance(navigation.get("payload"), dict) else None
+        if nav_state is None:
+            nav_state = navigation.get("nav_state") if isinstance(navigation.get("nav_state"), dict) else navigation
 
-        if isinstance(response.get("telemetry"), dict):
-            return response["telemetry"]
+        telemetry: Dict[str, Any] = {}
+        if nav_state.get("lat") is not None:
+            telemetry["latitude"] = nav_state.get("lat")
+        if nav_state.get("lon") is not None:
+            telemetry["longitude"] = nav_state.get("lon")
+        if nav_state.get("alt_m") is not None:
+            telemetry["altitude"] = nav_state.get("alt_m")
 
-        return None
+        motors = payload.get("motors")
+        if isinstance(motors, dict) and motors.get("battery") is not None:
+            telemetry["battery"] = motors.get("battery")
+
+        return telemetry or None
 
     def _save_telemetry(self, telemetry: Dict[str, Any], correlation_id: str | None = None) -> None:
         telemetry_message = {
@@ -180,29 +196,23 @@ class DroneManagerComponent(BaseComponent):
             if not self._running:
                 break
 
-            response = self.bus.request(
-                DroneTopics.SECURITY_MONITOR,
+            response = self._proxy_request_drone(
+                DroneTopics.TELEMETRY,
+                DroneActions.TELEMETRY_GET,
                 {
-                    "action": DroneActions.PROXY_REQUEST,
-                    "sender": ComponentTopics.GCS_DRONE,
-                    "payload": {
-                        "target": {
-                            "topic": DroneTopics.TELEMETRY,
-                            "action": DroneActions.TELEMETRY_GET,
-                        },
-                        "data": {
-                        "drone_id": drone_id,
-                        },
-                    },
+                    "drone_id": drone_id,
                 },
                 timeout=5.0,
             )
+            print(f"[{self.component_id}] telemetry poll raw response for {drone_id}: {response!r}")
 
-            telemetry = self._extract_telemetry(response)
+            telemetry = self._normalize_telemetry(response)
+            print(f"[{self.component_id}] telemetry poll parsed telemetry for {drone_id}: {telemetry!r}")
             if telemetry is None:
                 continue
 
             telemetry.setdefault("drone_id", drone_id)
+            print(f"[{self.component_id}] telemetry poll saving telemetry for {drone_id}: {telemetry!r}")
             self._save_telemetry(telemetry)
 
     def _start_telemetry_polling(self, drone_id: str) -> None:
@@ -241,8 +251,6 @@ class DroneManagerComponent(BaseComponent):
             },
             correlation_id=correlation_id,
         )
-        if not self._response_ok(start_response):
-            return None
         
         mission_update_message = {
             "action": MissionStoreActions.UPDATE_MISSION,

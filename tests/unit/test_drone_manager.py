@@ -76,7 +76,7 @@ def test_handle_mission_upload(component, mock_bus):
     )
 
 
-def test_handle_mission_upload_skips_store_updates_when_drone_rejects(component, mock_bus):
+def test_handle_mission_upload_keeps_local_status_updates_when_drone_rejects(component, mock_bus):
     mock_bus.request.return_value = {"target_response": {"success": True, "payload": {"ok": False, "error": "bad"}}}
 
     component._handle_mission_upload(
@@ -89,7 +89,9 @@ def test_handle_mission_upload_skips_store_updates_when_drone_rejects(component,
         }
     )
 
-    mock_bus.publish.assert_not_called()
+    assert mock_bus.publish.call_count == 2
+    assert mock_bus.publish.call_args_list[0].args[0] == ComponentTopics.GCS_MISSION_STORE
+    assert mock_bus.publish.call_args_list[1].args[0] == ComponentTopics.GCS_DRONE_STORE
 
 
 def test_save_telemetry(component, mock_bus):
@@ -106,20 +108,64 @@ def test_save_telemetry(component, mock_bus):
     )
 
 
+def test_proxy_request_drone_unwraps_security_monitor_payload(component, mock_bus):
+    nested_response = {"success": True, "payload": {"telemetry": {"battery": 61}}}
+    mock_bus.request.return_value = {
+        "payload": {
+            "target_topic": DroneTopics.TELEMETRY,
+            "target_action": DroneActions.TELEMETRY_GET,
+            "target_response": nested_response,
+        }
+    }
+
+    response = component._proxy_request_drone(
+        DroneTopics.TELEMETRY,
+        DroneActions.TELEMETRY_GET,
+        {"drone_id": "dr-2"},
+    )
+
+    assert response == nested_response
+
+
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
         ({"payload": {"telemetry": {"drone_id": "dr-2", "battery": 90}}}, {"drone_id": "dr-2", "battery": 90}),
-        ({"telemetry": {"drone_id": "dr-2", "battery": 80}}, {"drone_id": "dr-2", "battery": 80}),
         (
-            {"target_response": {"payload": {"navigation": {"lat": 55.7, "lon": 37.6, "alt_m": 120.0}}}},
+            {
+                "payload": {
+                    "target_response": {
+                        "payload": {
+                            "navigation": {"payload": {"lat": 55.65, "lon": 37.61, "alt_m": 121.5}},
+                            "motors": {"battery": 63},
+                        }
+                    }
+                }
+            },
+            {"latitude": 55.65, "longitude": 37.61, "altitude": 121.5, "battery": 63},
+        ),
+        (
+            {"payload": {"navigation": {"payload": {"lat": 55.7, "lon": 37.6, "alt_m": 120.0}}}},
             {"latitude": 55.7, "longitude": 37.6, "altitude": 120.0},
+        ),
+        (
+            {"payload": {"navigation": {"nav_state": {"lat": 55.8, "lon": 37.7, "alt_m": 121.0}}}},
+            {"latitude": 55.8, "longitude": 37.7, "altitude": 121.0},
+        ),
+        (
+            {
+                "payload": {
+                    "navigation": {"payload": {"lat": 55.9, "lon": 37.8, "alt_m": 122.0}},
+                    "motors": {"battery": 64},
+                }
+            },
+            {"latitude": 55.9, "longitude": 37.8, "altitude": 122.0, "battery": 64},
         ),
         ({}, None),
     ],
 )
-def test_extract_telemetry(component, response, expected):
-    assert component._extract_telemetry(response) == expected
+def test_normalize_telemetry(component, response, expected):
+    assert component._normalize_telemetry(response) == expected
 
 
 def test_handle_mission_start(component, mock_bus, monkeypatch):
@@ -196,7 +242,7 @@ def test_poll_telemetry_loop_requests_drone_and_saves_response(component, mock_b
 
     saved = []
     monkeypatch.setattr(component, "_save_telemetry", lambda telemetry, correlation_id=None: saved.append(telemetry))
-    mock_bus.request.return_value = {"payload": {"telemetry": {"battery": 61}}}
+    mock_bus.request.return_value = {"target_response": {"payload": {"telemetry": {"battery": 61}}}}
 
     component._poll_telemetry_loop("dr-9", OneShotEvent())
 
