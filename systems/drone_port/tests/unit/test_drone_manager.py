@@ -1,11 +1,33 @@
+import pytest
+
+from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.src.drone_manager import DroneManager
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.topics import DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
-from systems.drone_port.src.port_manager.topics import PortManagerActions
+from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
 
 
+@pytest.fixture
+def component(mock_bus):
+    return DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+
+# -------------------------
+# Регистрация обработчиков
+# -------------------------
+def test_registers_drone_manager_handlers(component):
+    """Все действия DroneManager зарегистрированы в _handlers."""
+    assert DroneManagerActions.REQUEST_LANDING in component._handlers
+    assert DroneManagerActions.REQUEST_TAKEOFF in component._handlers
+    assert DroneManagerActions.REQUEST_CHARGING in component._handlers
+
+
+# -------------------------
+# REQUEST_LANDING (_handle_landing)
+# -------------------------
 def test_landing_registers_drone_after_port_assignment(mock_bus):
+    """После выдачи порта публикуем REGISTER_DRONE в реестр с port_id и model."""
     manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
     mock_bus.request.return_value = {"success": True, "payload": {"port_id": "P-01"}}
 
@@ -59,15 +81,15 @@ def test_takeoff_publishes_port_release_and_sitl_home(mock_bus, patch_drone_mana
     assert result["drone_id"] == "DR-1"
     assert result["port_coordinates"] == {"lat": "55.751000", "lon": "37.617000"}
     assert mock_bus.publish.call_args_list[0].args == (
-        "v1.drone_port.1.port_manager",
+        PortTopics.PORT_MANAGER,
         {
-            "action": "free_slot",
+            "action": PortManagerActions.FREE_SLOT,
             "payload": {"drone_id": "DR-1", "port_id": "P-01"},
             "sender": "drone_manager",
         },
     )
     assert mock_bus.publish.call_args_list[1].args == (
-        "sitl",
+        ExternalTopics.SITL,
         {
             "drone_id": "DR-1",
             "home_lat": 55.751,

@@ -7,7 +7,12 @@ from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
-from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics, DroneManagerActions
+from systems.drone_port.src.drone_manager.topics import (
+    ComponentTopics as DroneManagerTopics,
+    DroneManagerActions,
+    ExternalTopics,
+    SITLActions,
+)
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
 
@@ -61,7 +66,7 @@ class DroneManager(BaseComponent):
     - от дронов к PortManager (landing/takeoff)
     - от дронов к ChargingManager (charging)
     """
-    
+
     def __init__(
         self,
         component_id: str,
@@ -85,8 +90,16 @@ class DroneManager(BaseComponent):
         """
         Запрос на посадку от дрона.
         """
-        payload = message.get("payload", {})
-        drone_id = payload.get("drone_id") or _drone_id_from_sender(message.get("sender"))
+        payload = message.get("payload")
+        if payload is None:
+            payload = {}
+        elif not isinstance(payload, dict):
+            return {"error": "Invalid payload", "from": self.component_id}
+
+        drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return {"error": "drone_id required", "from": self.component_id}
+            
         model = payload.get("model", "unknown")
         battery = _parse_battery_value(payload.get("battery"))
         logger.info(
@@ -160,7 +173,7 @@ class DroneManager(BaseComponent):
                 "drone_id": drone_id,
                 "from": self.component_id,
             }
-        
+
         return {
             "error": "No free ports",
             "from": self.component_id
@@ -170,8 +183,14 @@ class DroneManager(BaseComponent):
         """
         Запрос на взлет от дрона.
         """
-        payload = message.get("payload") or {}
-        drone_id = payload.get("drone_id") or _drone_id_from_sender(message.get("sender"))
+        payload = message.get("payload")
+        if not isinstance(payload, dict):
+            return {"error": "Invalid payload", "from": self.component_id}
+
+        drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return {"error": "drone_id required", "from": self.component_id}
+
         logger.info(
             "[%s] request_takeoff drone_id=%s payload=%r sender=%s",
             self.component_id,
@@ -179,6 +198,7 @@ class DroneManager(BaseComponent):
             payload,
             message.get("sender"),
         )
+        
         port_response = self.bus.request(
             PortTopics.PORT_MANAGER,
             {

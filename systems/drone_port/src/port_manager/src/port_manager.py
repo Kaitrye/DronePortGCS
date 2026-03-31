@@ -42,8 +42,14 @@ class PortManager(BaseComponent):
         self.register_handler(PortManagerActions.GET_PORT_STATUS, self._handle_get_port_status)
 
     def _handle_request_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        payload = message.get("payload", {})
+        payload = message.get("payload")
+        if payload is None:
+            payload = {}
+        elif not isinstance(payload, dict):
+            return {"error": "Invalid payload"}
         drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return {"error": "drone_id required"}
         logger.info("[%s] request_landing drone_id=%s", self.component_id, drone_id)
 
         response = self.bus.request(
@@ -82,10 +88,17 @@ class PortManager(BaseComponent):
 
     def _handle_free_slot(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Освободить порт."""
-        payload = message.get("payload", {})
+        payload = message.get("payload")
+        if payload is None:
+            payload = {}
+        elif not isinstance(payload, dict):
+            return None
         port_id = payload.get("port_id")
-        logger.info("[%s] free_slot port_id=%s payload=%r", self.component_id, port_id, payload)
         
+        if not port_id or not str(port_id).strip():
+            return None
+        logger.info("[%s] free_slot port_id=%s payload=%r", self.component_id, port_id, payload)
+
         self.bus.publish(
             ComponentTopics.STATE_STORE,
             {

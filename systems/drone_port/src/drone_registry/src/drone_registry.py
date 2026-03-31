@@ -76,7 +76,11 @@ class DroneRegistry(BaseComponent):
         Регистрация нового дрона.
         """
         payload = message.get("payload")
+        if not isinstance(payload, dict):
+            return None
         drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return None
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         logger.info("[%s] register_drone drone_id=%s payload=%r", self.component_id, drone_id, payload)
 
@@ -92,7 +96,7 @@ class DroneRegistry(BaseComponent):
                 "updated_at": now,
             },
         )
-        
+
         return None
 
     def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,7 +114,17 @@ class DroneRegistry(BaseComponent):
 
     def _handle_get_drone(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload")
+        if not isinstance(payload, dict):
+            return {
+                "error": "Invalid payload",
+                "from": self.component_id,
+            }
         drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return {
+                "error": "drone_id required",
+                "from": self.component_id,
+            }
         drone = self.redis.hgetall(f"drone:{drone_id}")
         logger.info("[%s] get_drone drone_id=%s found=%s", self.component_id, drone_id, bool(drone))
 
@@ -128,7 +142,11 @@ class DroneRegistry(BaseComponent):
 
     def _handle_delete_drone(self, message: Dict[str, Any]) -> None:
         payload = message.get("payload")
+        if not isinstance(payload, dict):
+            return None
         drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return None
         logger.info("[%s] delete_drone drone_id=%s", self.component_id, drone_id)
 
         self.redis.delete(f"drone:{drone_id}")
@@ -139,7 +157,11 @@ class DroneRegistry(BaseComponent):
         Обновляет статус дрона после начала зарядки.
         """
         payload = message.get("payload")
+        if not isinstance(payload, dict):
+            return None
         drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return None
         logger.info("[%s] charging_started drone_id=%s", self.component_id, drone_id)
 
         self.redis.hset(
@@ -156,17 +178,24 @@ class DroneRegistry(BaseComponent):
         Обновляет уровень заряда дрона.
         """
         payload = message.get("payload")
+        if not isinstance(payload, dict):
+            return None
         drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            return None
         battery = payload.get("battery")
+        try:
+            battery_num = float(battery)
+        except (TypeError, ValueError):
+            return None
         logger.info("[%s] update_battery drone_id=%s battery=%s", self.component_id, drone_id, battery)
 
         self.redis.hset(
             f"drone:{drone_id}",
             mapping={
-                "battery": battery,
-                "status": "ready" if battery == 100 else "charging",
+                "battery": battery_num,
+                "status": "ready" if battery_num >= 100.0 else "charging",
                 "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             },
         )
-
         return None
