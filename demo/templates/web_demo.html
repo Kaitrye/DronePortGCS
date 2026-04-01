@@ -523,6 +523,137 @@
         display: none !important;
       }
 
+            /* Визуализация портов дронопорта */
+      .port-visualization {
+          background: rgba(0, 0, 0, 0.3);
+          border-radius: 8px;
+          padding: 20px;
+          margin-top: 15px;
+      }
+
+      .port-map-container {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 15px;
+          padding: 20px;
+          background: rgba(10, 30, 50, 0.5);
+          border-radius: 8px;
+          border: 1px solid rgba(100, 150, 200, 0.3);
+          min-height: 300px;
+          margin-bottom: 15px;
+      }
+
+      .port-item {
+          position: relative;
+          background: rgba(50, 70, 90, 0.6);
+          border: 2px solid rgba(100, 150, 200, 0.4);
+          border-radius: 8px;
+          height: 100px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.3s ease;
+      }
+
+      .port-item.available {
+          border-color: rgba(50, 200, 100, 0.6);
+          background: rgba(30, 60, 40, 0.4);
+      }
+
+      .port-item.occupied {
+          border-color: rgba(200, 80, 80, 0.6);
+          background: rgba(60, 30, 30, 0.4);
+      }
+
+      .port-status-indicator {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+      }
+
+      .port-status-indicator.available {
+          background: #4ade80;
+          box-shadow: 0 0 8px #4ade80;
+      }
+
+      .port-status-indicator.occupied {
+          background: #f87171;
+          box-shadow: 0 0 8px #f87171;
+      }
+
+      .drone-rectangle {
+          width: 50px;
+          height: 30px;
+          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+          border-radius: 4px;
+          border: 2px solid #60a5fa;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+          margin-bottom: 8px;
+      }
+
+      .port-label {
+          font-size: 11px;
+          color: #9ca3af;
+          text-align: center;
+      }
+
+      .drone-type-label {
+          font-size: 10px;
+          color: #60a5fa;
+          font-weight: bold;
+          text-align: center;
+          margin-top: 4px;
+      }
+
+      .port-legend {
+          display: flex;
+          gap: 20px;
+          justify-content: center;
+          margin-bottom: 15px;
+          padding: 10px;
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 6px;
+      }
+
+      .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: #d1d5db;
+      }
+
+      .legend-color {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+      }
+
+      .legend-color.available {
+          background: #4ade80;
+      }
+
+      .legend-color.occupied {
+          background: #f87171;
+      }
+
+      .port-stats {
+          display: flex;
+          gap: 20px;
+          justify-content: center;
+          margin-bottom: 15px;
+          font-size: 13px;
+          color: #d1d5db;
+      }
+
+      .port-stats b {
+          color: #60a5fa;
+      }
+
       @media (max-width: 1400px) {
         body {
           min-width: 1080px;
@@ -545,6 +676,7 @@
         <button class="tab" type="button" data-page-target="tracking_page">Трекинг</button>
         <button class="tab" type="button" data-page-target="schemes_page">Схемы</button>
         <button class="tab" type="button" data-page-target="security_page">Безопасность</button>
+        <button class="tab" type="button" data-page-target="dronoport_page">Дронопорт</button>
         <button class="tab" type="button" data-page-target="status_page">Статус</button>
         <button class="tab" type="button" data-page-target="help_page">Справка</button>
       </div>
@@ -809,6 +941,104 @@
           </div>
         </section>
       </section>
+
+      <section class="page" id="dronoport_page">
+        <!-- Статус Дронопорта (автоматический запуск) -->
+        <div class="card">
+          <div class="card-header">Дронопорт <span class="badge bg-success ms-2">Auto</span></div>
+          <div class="card-body">
+            <p class="text-muted small">
+              <i class="bi bi-info-circle"></i> 
+              Дронопорт запускается автоматически вместе с системой. 
+              Ниже доступны инструменты мониторинга.
+            </p>
+            
+            <!-- Кнопки мониторинга (без управления) -->
+            <div class="btn-group mb-3" role="group">
+              <button class="btn btn-outline-primary btn-sm" id="btn-droneport-status">🔄 Статус контейнеров</button>
+              <button class="btn btn-outline-secondary btn-sm" id="btn-ports-status">📡 Порты</button>
+              <button class="btn btn-outline-secondary btn-sm" id="btn-available-drones">🚁 Доступные дроны</button>
+            </div>
+            
+            <!-- Вывод статуса -->
+            <pre id="droneport-status-output" class="small bg-light p-2 rounded" style="max-height: 200px; overflow: auto;"></pre>
+            
+            <div class="alert alert-info small mt-2 mb-0">
+              <strong>Примечание:</strong> Для перезапуска компонентов используйте терминал или API.
+            </div>
+          </div>
+        </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Порты Дронопорта</div>
+                <div class="panel-meta">Статус зарядных и посадочных портов</div>
+              </div>
+              <div class="panel-body">
+                <div class="button-grid">
+                  <button class="ghost" id="ports_status_btn" type="button">Обновить статус портов</button>
+                </div>
+                <div id="ports_status_display" class="message-box" style="margin-top: 12px; font-size: 0.85rem;">
+                  Нажмите кнопку для получения информации о портах.
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Реестр Дронов</div>
+                <div class="panel-meta">Дроны, зарегистрированные в дронопорте</div>
+              </div>
+              <div class="panel-body">
+                <div class="field">
+                  <label for="drone_registry_id">ID дрона</label>
+                  <input id="drone_registry_id" value="drone-demo-1">
+                </div>
+                <div class="button-grid" style="margin-top: 10px;">
+                  <button class="ghost" id="available_drones_btn" type="button">Доступные дроны</button>
+                  <button class="ghost" id="registry_record_btn" type="button">Запись в реестре</button>
+                </div>
+                <div id="registry_display" class="message-box" style="margin-top: 12px; font-size: 0.85rem;">
+                  Результаты запросов к реестру появятся здесь.
+                </div>
+              </div>
+            </section>
+          </aside>
+
+          <!-- Визуализация Дронопорта -->
+          <div class="card">
+              <h3>🗺️ Карта Дронопорта</h3>
+              <p class="hint">Визуальное представление зарядных и посадочных портов</p>
+              
+              <div class="port-visualization">
+                  <div class="port-map-container" id="portMapContainer">
+                      <!-- Порты будут отрисованы здесь через JavaScript -->
+                  </div>
+                  
+                  <div class="port-legend">
+                      <div class="legend-item">
+                          <span class="legend-color available"></span>
+                          <span>Свободен</span>
+                      </div>
+                      <div class="legend-item">
+                          <span class="legend-color occupied"></span>
+                          <span>Занят</span>
+                      </div>
+                  </div>
+                  
+                  <div class="port-stats" id="portStats">
+                      <span>Всего: <b id="totalPorts">0</b></span>
+                      <span>Свободно: <b id="availablePorts">0</b></span>
+                      <span>Занято: <b id="occupiedPorts">0</b></span>
+                  </div>
+                  
+                  <button onclick="refreshPortVisualization()">🔄 Обновить статус портов</button>
+              </div>
+          </div>
+        </div>
+      </section>
+
 
       <section class="page" id="security_page">
         <section class="panel">
@@ -1647,6 +1877,374 @@
         fitRoute();
         trackingMap.invalidateSize();
       }, 0);
+
+// Визуализация портов дронопорта
+async function refreshPortVisualization() {
+    const container = document.getElementById('portMapContainer');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading">Загрузка данных портов...</div>';
+    
+    try {
+        // Получаем статус портов
+        const portsResponse = await fetch('/api/action/ports-status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const portsData = await portsResponse.json();
+        
+        // Получаем доступные дроны
+        const dronesResponse = await fetch('/api/action/available-drones', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const dronesData = await dronesResponse.json();
+        
+        // Получаем информацию о дронах в реестре
+        const registryResponse = await fetch('/api/action/registry-record', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({drone_id: 'drone-demo-1'})
+        });
+        const registryData = await registryResponse.json();
+        
+        renderPortMap(portsData, dronesData, registryData);
+        
+    } catch (error) {
+        container.innerHTML = `<div class="error">Ошибка загрузки: ${error.message}</div>`;
+        console.error('Port visualization error:', error);
+    }
+}
+
+function renderPortMap(portsData, dronesData, registryData) {
+    const container = document.getElementById('portMapContainer');
+    const statsContainer = document.getElementById('portStats');
+    
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const ports = parsePortsData(portsData);
+    
+    let availableCount = 0;
+    let occupiedCount = 0;
+    // ✅ Убрали maintenanceCount
+    
+    ports.forEach((port, index) => {
+        const portElement = document.createElement('div');
+        portElement.className = `port-item ${port.status}`;
+        
+        // Индикатор статуса
+        const statusIndicator = document.createElement('div');
+        statusIndicator.className = `port-status-indicator ${port.status}`;
+        portElement.appendChild(statusIndicator);
+        
+        // Если порт занят - рисуем дрон
+        if (port.status === 'occupied' && port.drone) {
+            const droneRect = document.createElement('div');
+            droneRect.className = 'drone-rectangle';
+            portElement.appendChild(droneRect);
+            
+            const droneTypeLabel = document.createElement('div');
+            droneTypeLabel.className = 'drone-type-label';
+            droneTypeLabel.textContent = port.drone.type || 'Unknown';
+            portElement.appendChild(droneTypeLabel);
+            
+            occupiedCount++;
+        } else if (port.status === 'available') {
+            availableCount++;
+        }
+        // ✅ Убрали обработку maintenance
+        
+        // Метка порта
+        const portLabel = document.createElement('div');
+        portLabel.className = 'port-label';
+        portLabel.textContent = `Порт ${port.id || index + 1}`;
+        portElement.appendChild(portLabel);
+        
+        container.appendChild(portElement);
+    });
+    
+    // Обновляем статистику
+    if (statsContainer) {
+        document.getElementById('totalPorts').textContent = ports.length;
+        document.getElementById('availablePorts').textContent = availableCount;
+        document.getElementById('occupiedPorts').textContent = occupiedCount;
+    }
+}
+
+function parsePortsData(data) {
+    // Адаптируйте эту функцию под формат ответа вашего API
+    // Пример ожидаемого формата:
+    // { ports: [{id: "port-1", status: "occupied", drone: {type: "DemoCopter-X"}}, ...] }
+    
+    if (data && data.payload && data.payload.ports) {
+        return data.payload.ports;
+    }
+    
+    // Дефолтные данные для демонстрации
+    return [
+        {id: "port-1", status: "occupied", drone: {type: "DemoCopter-X"}},
+        {id: "port-2", status: "available", drone: null},
+        {id: "port-3", status: "occupied", drone: {type: "Cargo-Drone-A"}},
+        {id: "port-4", status: "available", drone: null},
+        {id: "port-5", status: "available", drone: null},
+        {id: "port-6", status: "available", drone: null}
+    ];
+}
+
+// Автообновление каждые 10 секунд
+setInterval(refreshPortVisualization, 10000);
+
+// Первичная загрузка при открытии вкладки
+document.addEventListener('DOMContentLoaded', function() {
+    // Находим вкладку дронопорта и добавляем обработчик
+    const dronePortTab = document.querySelector('[data-tab="droneport"]');
+    if (dronePortTab) {
+        dronePortTab.addEventListener('click', refreshPortVisualization);
+    }
+});
+
+
+
+
+function displayJsonInBox(elementId, data) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    if (!data) {
+        element.textContent = "Нет данных";
+        return;
+    }
+    
+    try {
+        if (typeof data === 'string') {
+            // Пытаемся распарсить строку как JSON
+            try {
+                const parsed = JSON.parse(data);
+                element.textContent = JSON.stringify(parsed, null, 2);
+            } catch (e) {
+                element.textContent = data;
+            }
+        } else {
+            element.textContent = JSON.stringify(data, null, 2);
+        }
+    } catch (error) {
+        element.textContent = String(data);
+    }
+}
+
+async function safeApiCall(endpoint, options = {}) {
+    try {
+        const response = await fetch(endpoint, {
+            method: options.method || "POST",
+            headers: { "Content-Type": "application/json" },
+            body: options.body ? JSON.stringify(options.body) : undefined
+        });
+        
+        // Проверяем Content-Type
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("text/html")) {
+            throw new Error("Сервер вернул HTML вместо JSON. Возможно, произошла ошибка на сервере.");
+        }
+        
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error("API call failed:", error);
+        throw error;
+    }
+}
+
+
+
+  // Обработчики для дронопорта
+document.getElementById("drone_port_up_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const logsDisplay = document.getElementById("drone_port_logs_display");
+    logsDisplay.textContent = "Запуск DronePort...";
+    
+    try {
+        const data = await safeApiCall("/api/action/drone-port-up", {});
+        if (data.ok) {
+            logsDisplay.textContent = "✓ DronePort успешно запущен\n\n" + (data.result || "");
+            setStatus("ok", "DronePort запущен");
+        } else {
+            logsDisplay.textContent = "✗ Ошибка запуска DronePort:\n" + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка запуска DronePort");
+        }
+    } catch (error) {
+        logsDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+document.getElementById("drone_port_down_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const logsDisplay = document.getElementById("drone_port_logs_display");
+    logsDisplay.textContent = "Остановка DronePort...";
+    
+    try {
+        const data = await safeApiCall("/api/action/drone-port-down", {});
+        if (data.ok) {
+            logsDisplay.textContent = "✓ DronePort успешно остановлен\n\n" + (data.result || "");
+            setStatus("ok", "DronePort остановлен");
+        } else {
+            logsDisplay.textContent = "✗ Ошибка остановки DronePort:\n" + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка остановки DronePort");
+        }
+    } catch (error) {
+        logsDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+document.getElementById("drone_port_down_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const logsDisplay = document.getElementById("drone_port_logs_display");
+    logsDisplay.textContent = "Остановка DronePort...";
+    
+    try {
+        const data = await safeApiCall("/api/action/drone-port-down", {});
+        if (data.ok) {
+            logsDisplay.textContent = "✓ DronePort успешно остановлен\n\n" + (data.result || "");
+            setStatus("ok", "DronePort остановлен");
+        } else {
+            logsDisplay.textContent = "✗ Ошибка остановки DronePort:\n" + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка остановки DronePort");
+        }
+    } catch (error) {
+        logsDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+document.getElementById("ports_status_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const portsDisplay = document.getElementById("ports_status_display");
+    portsDisplay.textContent = "Запрос статуса портов...";
+    
+    try {
+        const data = await safeApiCall("/api/action/ports-status", {});
+        if (data.ok) {
+            displayJsonInBox("ports_status_display", data.result);
+            setStatus("ok", "Статус портов получен");
+        } else {
+            portsDisplay.textContent = "✗ Ошибка: " + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка получения портов");
+        }
+    } catch (error) {
+        portsDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+  document.getElementById("available_drones_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const registryDisplay = document.getElementById("registry_display");
+    registryDisplay.textContent = "Запрос доступных дронов...";
+    
+    try {
+        const data = await safeApiCall("/api/action/available-drones", {});
+        if (data.ok) {
+            displayJsonInBox("registry_display", data.result);
+            setStatus("ok", "Список дронов получен");
+        } else {
+            registryDisplay.textContent = "✗ Ошибка: " + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка получения списка");
+        }
+    } catch (error) {
+        registryDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+  document.getElementById("registry_record_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const droneId = document.getElementById("drone_registry_id")?.value || "drone-demo-1";
+    button.disabled = true;
+    const registryDisplay = document.getElementById("registry_display");
+    registryDisplay.textContent = `Запрос записи для дрона ${droneId}...`;
+    
+    try {
+        const data = await safeApiCall("/api/action/registry-record", {
+            body: { drone_id: droneId }
+        });
+        if (data.ok) {
+            displayJsonInBox("registry_display", data.result);
+            setStatus("ok", "Запись получена");
+        } else {
+            registryDisplay.textContent = "✗ Ошибка: " + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка получения записи");
+        }
+    } catch (error) {
+        registryDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+document.getElementById("drone_port_logs_btn")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const tail = document.getElementById("drone_port_logs_tail")?.value || "50";
+    button.disabled = true;
+    const logsDisplay = document.getElementById("drone_port_logs_display");
+    logsDisplay.textContent = "Загрузка логов...";
+    
+    try {
+        const data = await safeApiCall("/api/action/logs", {
+            body: { stack: "drone_port", tail: parseInt(tail) }
+        });
+        if (data.ok) {
+            logsDisplay.textContent = data.result || "Нет логов";
+            setStatus("ok", "Логи загружены");
+        } else {
+            logsDisplay.textContent = "✗ Ошибка: " + (data.error || "Неизвестная ошибка");
+            setStatus("err", "Ошибка загрузки логов");
+        }
+    } catch (error) {
+        logsDisplay.textContent = "✗ Ошибка сети: " + error.message;
+        setStatus("err", "Ошибка сети");
+    } finally {
+        button.disabled = false;
+    }
+});
+
+  // Обновите существующий обработчик открытия вкладки для поддержки дронопорта
+  const originalOpenPage = openPage;
+  window.openPage = function(pageId) {
+    if (originalOpenPage) originalOpenPage(pageId);
+    if (pageId === "dronoport_page") {
+      setTimeout(() => {
+        // Автоматически обновить статус портов при открытии вкладки
+        const portsBtn = document.getElementById("ports_status_btn");
+        if (portsBtn) portsBtn.click();
+      }, 100);
+    }
+  };
+  openPage = window.openPage;
+</script>
+
+
+
+
+
     </script>
   </body>
 </html>

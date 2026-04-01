@@ -49,6 +49,7 @@ STREAMING_ACTIONS: Dict[str, Callable[[Callable[[str], None]], Any]] = {
     "broker-up": demo.broker_up_stream,
     "gcs-up": demo.gcs_up_stream,
     "gcs-interactive-up": demo.gcs_interactive_up_stream,
+    "drone-port-up": demo.drone_port_up_stream,
 }
 
 
@@ -63,16 +64,37 @@ def _bootstrap_gcs_stack() -> None:
     auto_bootstrap = _env_bool("GCS_WEB_AUTO_BOOTSTRAP", True)
     if not auto_bootstrap:
         return
-
-    print("[bootstrap] Starting broker + GCS before exposing web UI...")
+    
+    print("[bootstrap] Starting stack: broker → GCS → DronePort")
     try:
-        output = demo.gcs_interactive_up_stream(on_output=lambda chunk: print(chunk, end=""))
-        if output.strip():
-            print("[bootstrap] GCS interactive stack is ready.")
-    except Exception:
-        print("[bootstrap] Failed to start broker + GCS. Web UI will not be exposed.")
-        raise
-
+        # 1. Подготовка систем (генерация docker-compose.yml)
+        print("[bootstrap] Step 1/5: Preparing systems... ")
+        demo.prepare_systems_stream(on_output=lambda chunk: print(chunk, end=""))
+        
+        # 2. 🔥 Запуск брокера (ОДИН РАЗ для всех систем)
+        print("\n[bootstrap] Step 2/5: Starting broker (shared)... ")
+        demo.broker_up_stream(on_output=lambda chunk: print(chunk, end=""))
+        demo.wait_for_broker(timeout=90)  # 🔥 Увеличенный таймаут
+        
+        # 3. Запуск GCS
+        print("\n[bootstrap] Step 3/5: Starting GCS... ")
+        demo.gcs_up_stream(on_output=lambda chunk: print(chunk, end=""))
+        
+        # 4. 🔥 Запуск DronePort (без брокера!)
+        print("\n[bootstrap] Step 4/5: Starting DronePort (no broker)... ")
+        demo.drone_port_up_stream(on_output=lambda chunk: print(chunk, end=""))
+        
+        # 5. Подключение и проверка готовности
+        print("\n[bootstrap] Step 5/5: Connecting and waiting for readiness... ")
+        demo.connect_bus()
+        demo.wait_until_ready(timeout=180)  # 🔥 Увеличенный таймаут для DronePort
+        
+        print("[bootstrap] ✓ All components ready (shared broker).")
+        
+    except Exception as e:
+        print(f"[bootstrap] ✗ Failed: {e}")
+        print(f"[bootstrap] Traceback: {traceback.format_exc()}")
+        print("[bootstrap] Web UI exposed, components may be unavailable.")
 
 def _read_git_file(ref: str, path: str) -> str:
     try:
@@ -243,6 +265,8 @@ def _execute(action_name: str, func):
         result = func()
         return jsonify({"ok": True, "action": action_name, "result": result, "result_text": _serialize(result)})
     except Exception as exc:  # pragma: no cover - defensive boundary for UI
+        import traceback
+        print(f"[ERROR] {action_name}: {traceback.format_exc()}")
         return jsonify(_error_payload(action_name, exc)), 500
 
 
@@ -412,21 +436,6 @@ def ps():
     return _execute("ps", demo.gcs_ps)
 
 
-@app.post("/api/action/logs")
-def logs():
-    payload = _json_payload()
-
-    def run():
-        stack = payload.get("stack", "broker")
-        service = _optional_text(payload.get("service"))
-        tail = int(payload.get("tail", 100))
-        if stack not in {"broker", "gcs"}:
-            raise ValueError("stack must be one of: broker, gcs")
-        return demo.logs(stack=stack, service=service, tail=tail)
-
-    return _execute("logs", run)
-
-
 @app.post("/api/action/landing")
 def landing():
     payload = _json_payload()
@@ -544,6 +553,97 @@ def snapshot():
         )
 
     return _execute("snapshot", run)
+
+
+@app.post("/api/action/drone-port-up")
+def drone_port_up():
+    """Запуск DronePort"""
+    def run():
+        return demo.drone_port_up()
+    return _execute("drone-port-up", run)
+
+
+@app.post("/api/action/drone-port-down")
+def drone_port_down():
+    """Остановка DronePort"""
+    def run():
+        return demo.drone_port_down()
+    return _execute("drone-port-down", run)
+
+
+@app.post("/api/action/drone-port-status")
+def drone_port_status():
+    """Статус DronePort"""
+    def run():
+        result = demo.ps()
+        # Если результат - строка, оборачиваем в словарь для корректного JSON
+        if isinstance(result, str):
+            return {"status_output": result}
+        return result
+    return _execute("drone-port-status", run)
+
+
+@app.post("/api/action/ports-status")
+def ports_status():
+    """Получить статус портов дронопорта"""
+    def run():
+        result = demo.get_ports()
+        if result is None:
+            # Возвращаем демо-данные если DronePort не запущен
+            return {
+                "payload": {
+                    "ports": [
+                        {"id": "port-1", "status": "occupied", "drone": {"type": "DemoCopter-X", "id": "drone-demo-1"}},
+                        {"id": "port-2", "status": "available", "drone": None},
+                        {"id": "port-3", "status": "occupied", "drone": {"type": "Cargo-Drone-A", "id": "drone-demo-2"}},
+                        {"id": "port-4", "status": "available", "drone": None},
+                        {"id": "port-5", "status": "available", "drone": None},
+                        {"id": "port-6", "status": "available", "drone": None}
+                    ]
+                }
+            }
+        return result
+    return _execute("ports-status", run)
+
+
+@app.post("/api/action/available-drones")
+def available_drones():
+    """Получить список доступных дронов в дронопорте"""
+    def run():
+        result = demo.get_available_droneport_drones()
+        if result is None:
+            return {"error": "Не удалось получить список дронов. Убедитесь, что DronePort запущен."}
+        return result
+    return _execute("available-drones", run)
+
+
+@app.post("/api/action/registry-record")
+def registry_record():
+    """Получить запись в реестре дронов"""
+    payload = _json_payload()
+    def run():
+        drone_id = _optional_text(payload.get("drone_id")) or "drone-demo-1"
+        result = demo.get_drone_registry_record(drone_id)
+        if result is None:
+            return {"error": f"Не удалось получить запись для дрона {drone_id}. Убедитесь, что DronePort запущен и дрон зарегистрирован."}
+        return result
+    return _execute("registry-record", run)
+
+
+# В web_demo.py найдите существующий эндпоинт @app.post("/api/action/logs") и обновите:
+@app.post("/api/action/logs")
+def logs():
+    payload = _json_payload()
+
+    def run():
+        stack = payload.get("stack", "broker")
+        service = _optional_text(payload.get("service"))
+        tail = int(payload.get("tail", 100))
+        if stack not in {"broker", "gcs", "drone_port"}:  # Добавлено "drone_port"
+            raise ValueError("stack must be one of: broker, gcs, drone_port")
+        return demo.logs(stack=stack, service=service, tail=tail)
+
+    return _execute("logs", run)
 
 
 if __name__ == "__main__":

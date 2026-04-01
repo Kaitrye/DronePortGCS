@@ -305,18 +305,43 @@ class DockerInteractiveDemo:
         )
 
     def drone_port_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
+        """Запуск DronePort (без брокера и его зависимостей)"""
         env = parse_env_file(DRONE_PORT_GENERATED_DIR / ".env")
         profile = env.get("BROKER_TYPE", "mqtt")
+        
+        compose_file = DRONE_PORT_GENERATED_DIR / "docker-compose.yml"
+        env_file = DRONE_PORT_GENERATED_DIR / ".env"
+        
+        if not compose_file.exists():
+            raise FileNotFoundError(f"Docker compose file not found: {compose_file}")
+        
+        # 🔥 Очистка старых контейнеров
+        if on_output:
+            on_output("[drone_port] Cleaning up existing DronePort containers...\n")
+        
+        try:
+            self._compose_stream(
+                compose_file, env_file, ["down", "--remove-orphans"],
+                on_output=on_output
+            )
+        except Exception as e:
+            if on_output:
+                on_output(f"[drone_port] Warning during down: {e}\n")
+        
+        # 🔥 Запуск с --no-deps чтобы НЕ запускать зависимости (mosquitto!)
+        if on_output:
+            on_output("[drone_port] Starting DronePort services (--no-deps to skip broker)...\n")
+        
         return self._compose_stream(
-            DRONE_PORT_GENERATED_DIR / "docker-compose.yml",
-            DRONE_PORT_GENERATED_DIR / ".env",
+            compose_file,
+            env_file,
             [
-                "--profile",
-                profile,
-                "up",
-                "-d",
+                "--profile", profile,
+                "up", "-d",
                 "--build",
-                "--no-deps",
+                "--force-recreate",
+                "--remove-orphans",
+                "--no-deps",  # 🔥 КЛЮЧЕВОЙ ФЛАГ: не запускать зависимости!
                 "redis",
                 "state_store",
                 "port_manager",
