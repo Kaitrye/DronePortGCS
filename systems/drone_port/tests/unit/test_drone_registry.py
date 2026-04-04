@@ -5,12 +5,13 @@ def test_register_drone_stores_metadata(mock_bus, patch_droneport_redis):
     registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
 
     registry._handle_register_drone(
-        {"payload": {"drone_id": "DR-1", "model": "QuadroX"}}
+        {"payload": {"drone_id": "DR-1", "model": "QuadroX", "port_id": "P-01"}}
     )
 
     saved = registry.redis.hgetall("drone:DR-1")
     assert saved["drone_id"] == "DR-1"
     assert saved["model"] == "QuadroX"
+    assert saved["port_id"] == "P-01"
     assert saved["status"] == "new"
 
 

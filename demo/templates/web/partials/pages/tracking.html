@@ -1,0 +1,75 @@
+<section class="page" id="tracking_page">
+  <div class="page-grid">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Трекинг Дрона</div>
+          <div class="panel-meta">Позиция по последней телеметрии из DroneStore</div>
+        </div>
+        <div class="panel-body">
+          <div class="field">
+            <label for="tracking_drone_id">ID дрона</label>
+            <input id="tracking_drone_id" value="drone-demo-1">
+          </div>
+          <div class="button-grid" style="margin-top: 10px;">
+            <button class="ghost" id="tracking_refresh_btn" type="button">Обновить Позицию</button>
+            <button class="ghost" id="tracking_center_btn" type="button">Центрировать Карту</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Последняя Телеметрия</div>
+          <div class="panel-meta">Краткое состояние борта</div>
+        </div>
+        <div class="panel-body">
+          <div class="status-row">
+            <div class="metric">
+              <div class="metric-label">Статус</div>
+              <div class="metric-value" id="tracking_status_value">нет данных</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Батарея</div>
+              <div class="metric-value" id="tracking_battery_value">-</div>
+            </div>
+          </div>
+          <div class="status-row" style="margin-top: 12px;">
+            <div class="metric">
+              <div class="metric-label">Широта</div>
+              <div class="metric-value" id="tracking_lat_value">-</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Долгота</div>
+              <div class="metric-value" id="tracking_lon_value">-</div>
+            </div>
+          </div>
+          <div class="status-row" style="margin-top: 12px;">
+            <div class="metric">
+              <div class="metric-label">Высота</div>
+              <div class="metric-value" id="tracking_alt_value">-</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Обновлено</div>
+              <div class="metric-value" id="tracking_updated_value">-</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <section class="panel map-wrap">
+        <div class="panel-header">
+          <div class="panel-title">Карта Трекинга</div>
+        </div>
+        <div class="map-toolbar">
+          <div class="hint" id="tracking_hint">
+            Откройте вкладку после старта миссии, чтобы видеть последние координаты дрона.
+          </div>
+        </div>
+        <div id="tracking_map"></div>
+      </section>
+    </section>
+  </div>
+</section>

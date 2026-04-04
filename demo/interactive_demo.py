@@ -465,6 +465,82 @@ class DockerInteractiveDemo:
         output.append(self._compose(DRONE_PORT_GENERATED_DIR / "docker-compose.yml", DRONE_PORT_GENERATED_DIR / ".env", ["ps"]))
         return "\n".join(output)
 
+    def drone_port_health(self) -> Dict[str, Any]:
+        raw = self._compose(
+            DRONE_PORT_GENERATED_DIR / "docker-compose.yml",
+            DRONE_PORT_GENERATED_DIR / ".env",
+            ["ps", "--format", "json"],
+        )
+        raw_text = (raw or "").strip()
+        if not raw_text:
+            services = []
+        else:
+            try:
+                parsed = json.loads(raw_text)
+                services = parsed if isinstance(parsed, list) else [parsed]
+            except json.JSONDecodeError:
+                services = [
+                    json.loads(line)
+                    for line in raw_text.splitlines()
+                    if line.strip()
+                ]
+
+        normalized_services = []
+        for service in services:
+            state = str(service.get("State") or "unknown").lower()
+            health = str(service.get("Health") or "").lower()
+            normalized_services.append(
+                {
+                    "name": service.get("Service") or service.get("Name") or "unknown",
+                    "state": state,
+                    "health": health or "n/a",
+                }
+            )
+
+        if not normalized_services:
+            return {
+                "status": "down",
+                "summary": "Контейнеры DronePort не запущены.",
+                "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "services": [],
+                "total": 0,
+                "healthy": 0,
+            }
+
+        healthy_count = 0
+        degraded_found = False
+
+        for service in normalized_services:
+            state = service["state"]
+            health = service["health"]
+            is_running = state == "running"
+            is_healthy = health in {"healthy", "n/a"}
+
+            if is_running and is_healthy:
+                healthy_count += 1
+            else:
+                degraded_found = True
+
+        total = len(normalized_services)
+        if healthy_count == total:
+            status = "healthy"
+            summary = f"DronePort работает штатно: {healthy_count} из {total} сервисов доступны."
+        elif healthy_count == 0:
+            status = "down"
+            summary = "DronePort недоступен: ни один сервис не находится в healthy/running."
+        else:
+            status = "degraded" if degraded_found else "healthy"
+            summary = f"DronePort работает с деградацией: {healthy_count} из {total} сервисов доступны."
+
+        return {
+            "status": status,
+            "summary": summary,
+            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "services": normalized_services,
+            "total": total,
+            "healthy": healthy_count,
+        }
+
     def logs(self, stack: str, service: Optional[str] = None, tail: int = 100) -> str:
         if stack == "broker":
             compose_file = DOCKER_DIR / "docker-compose.yml"

@@ -1,7 +1,6 @@
 """
 DroneManager — взаимодействие с физическими дронами.
 """
-import datetime
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
@@ -9,6 +8,25 @@ from systems.drone_port.src.charging_manager.topics import ComponentTopics as Ch
 from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics, DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
+
+
+def _extract_payload(response: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Поддерживаем и bus-ответ с payload, и старые плоские моки."""
+    if not response:
+        return {}
+    payload = response.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return response
+
+
+def _parse_battery_value(raw_value: Any) -> float | None:
+    if raw_value in (None, "", "unknown"):
+        return None
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return None
 
 
 class DroneManager(BaseComponent):
@@ -57,8 +75,9 @@ class DroneManager(BaseComponent):
             },
             timeout=3.0
         )
+        response_payload = _extract_payload(response)
 
-        if response and response.get("port_id"):
+        if response and response_payload.get("port_id"):
             self.bus.publish(
                 RegistryTopics.DRONE_REGISTRY,
                 {
@@ -66,13 +85,13 @@ class DroneManager(BaseComponent):
                     "payload": {
                         "drone_id": drone_id,
                         "model": model,
-                        "port_id": response.get("port_id"),
+                        "port_id": response_payload.get("port_id"),
                     },
                     "sender": self.component_id,
                 }
             )
 
-            port_id = response.get("port_id")
+            port_id = response_payload.get("port_id")
             return {
                 "port_id": port_id,
                 "from": self.component_id,
@@ -97,7 +116,7 @@ class DroneManager(BaseComponent):
             },
             timeout=3.0,
         )
-        ports = (port_response or {}).get("ports", [])
+        ports = _extract_payload(port_response).get("ports", [])
         drone_port = next(
             (port for port in ports if port.get("drone_id") == drone_id),
             None,
@@ -113,10 +132,17 @@ class DroneManager(BaseComponent):
                 "sender": self.component_id,
             }
         )
+        response_payload = _extract_payload(response)
 
         if response and response.get("success"):
-            battery = float(response.get("battery", 0.0))
-            port_id = response.get("port_id") or (drone_port or {}).get("port_id")
+            battery = _parse_battery_value(response_payload.get("battery"))
+            port_id = response_payload.get("port_id") or (drone_port or {}).get("port_id")
+
+            if battery is None:
+                return {
+                    "error": "Battery level is unknown",
+                    "from": self.component_id,
+                }
 
             if battery > 80.0:
                 self.bus.publish(

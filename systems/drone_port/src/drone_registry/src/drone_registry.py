@@ -55,6 +55,7 @@ class DroneRegistry(BaseComponent):
             mapping={
                 "drone_id": drone_id,
                 "model": payload.get("model", "unknown"),
+                "port_id": payload.get("port_id", ""),
                 "battery": "unknown",
                 "status": "new",
                 "registered_at": now,

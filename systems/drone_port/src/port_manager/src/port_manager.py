@@ -1,12 +1,21 @@
 """
 PortManager — управление посадочными площадками.
 """
-import datetime
 from typing import Dict, Any, List
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 from systems.drone_port.src.port_manager.topics import ComponentTopics, PortManagerActions
 from systems.drone_port.src.state_store.topics import StateStoreActions
+
+
+def _extract_payload(response: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Поддерживаем и реальный bus-ответ, и старые unit-test моки."""
+    if not response:
+        return {}
+    payload = response.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return response
 
 
 class PortManager(BaseComponent):
@@ -41,7 +50,7 @@ class PortManager(BaseComponent):
             },
             timeout=3.0,
         )
-        ports = (response or {}).get("ports", [])
+        ports = _extract_payload(response).get("ports", [])
 
         for port in ports:
             if not port.get("drone_id"):
@@ -95,5 +104,5 @@ class PortManager(BaseComponent):
         )
 
         return {
-            "ports": (response or {}).get("ports", []),
+            "ports": _extract_payload(response).get("ports", []),
         }
