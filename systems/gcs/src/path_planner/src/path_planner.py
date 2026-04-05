@@ -32,12 +32,12 @@ class PathPlannerComponent(BaseComponent):
                 {
                     "lat": float(point["lat"]),
                     "lon": float(point["lon"]),
-                    "alt": float(point.get("alt", 0.0)),
+                    "alt_m": float(point.get("alt_m", 0.0)),
                 }
                 for point in waypoints
             ]
         except (KeyError, TypeError, ValueError):
-            raise ValueError("Waypoints must be a list of points with lat/lon/alt")
+            raise ValueError("Waypoints must be a list of points with lat/lon/alt_m")
 
         if len(seed_points) == 2:
             return expand_two_points_to_path(seed_points)

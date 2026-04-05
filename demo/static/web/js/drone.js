@@ -1,8 +1,7 @@
 (function () {
   const app = window.WebUI;
   const trackingMapElement = document.getElementById("tracking_map");
-  const controlDroneInput = document.getElementById("control_drone_id");
-  if (!app || !trackingMapElement || !controlDroneInput) {
+  if (!app || !trackingMapElement) {
     return;
   }
 
@@ -19,10 +18,15 @@
 
   const trackingMap = L.map("tracking_map", { zoomControl: true }).setView([55.751244, 37.618423], 14);
   const trackingLayer = L.layerGroup().addTo(trackingMap);
+  const missionDroneInput = document.getElementById("drone_id");
   let telemetryPoll = null;
+  let missionWatchPoll = null;
+  let missionWatchDroneId = "";
   let trackingMarker = null;
   let trackingTrail = null;
   let trackingPositions = [];
+  let missionFlightObserved = false;
+  let landingRefreshSent = false;
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -30,12 +34,9 @@
   }).addTo(trackingMap);
 
   function syncDroneInputs() {
-    const missionDroneId = document.getElementById("drone_id")?.value || "drone-demo-1";
-    if (!controlDroneInput.value) {
-      controlDroneInput.value = missionDroneId;
-    }
+    const missionDroneId = (missionDroneInput?.value || "").trim();
     if (!trackingState.trackingDroneInput.dataset.userEdited) {
-      trackingState.trackingDroneInput.value = controlDroneInput.value || missionDroneId;
+      trackingState.trackingDroneInput.value = missionDroneId;
     }
   }
 
@@ -44,6 +45,14 @@
       clearInterval(telemetryPoll);
       telemetryPoll = null;
     }
+  }
+
+  function stopMissionWatch() {
+    if (missionWatchPoll) {
+      clearInterval(missionWatchPoll);
+      missionWatchPoll = null;
+    }
+    missionWatchDroneId = "";
   }
 
   function resetTrackingMap(message) {
@@ -105,6 +114,76 @@
     }).addTo(trackingLayer);
   }
 
+  function updatePortRefreshState(drone, droneId) {
+    const position = drone?.last_position || {};
+    const altitude = Number(position.altitude);
+    const hasAltitude = Number.isFinite(altitude);
+    const isAirborne = (hasAltitude && altitude > 1) || drone?.status === "busy";
+
+    if (isAirborne) {
+      missionFlightObserved = true;
+      landingRefreshSent = false;
+      return;
+    }
+
+    if (!missionFlightObserved || landingRefreshSent) {
+      return;
+    }
+
+    const isLanded = !hasAltitude || altitude <= 1;
+    if (!isLanded) {
+      return;
+    }
+
+    landingRefreshSent = true;
+    missionFlightObserved = false;
+    app.emit("port-state:changed", {
+      reason: "mission-landed",
+      droneId: droneId || trackingState.trackingDroneInput.value
+    });
+    stopMissionWatch();
+  }
+
+  async function pollMissionWatchDrone() {
+    if (!missionWatchDroneId) {
+      stopMissionWatch();
+      return;
+    }
+
+    try {
+      const { response, data } = await app.requestJson("/api/action/drone-state", {
+        body: { drone_id: missionWatchDroneId }
+      });
+
+      if (!response.ok || !data.ok) {
+        return;
+      }
+
+      const drone = data?.result?.payload?.drone || data?.result?.drone;
+      if (!drone) {
+        return;
+      }
+
+      updatePortRefreshState(drone, missionWatchDroneId);
+    } catch (error) {
+      // Background watcher should stay silent; UI errors belong to explicit user actions.
+    }
+  }
+
+  function startMissionWatch(droneId) {
+    const normalizedDroneId = String(droneId || "").trim();
+    if (!normalizedDroneId) {
+      return;
+    }
+
+    stopMissionWatch();
+    missionWatchDroneId = normalizedDroneId;
+    missionFlightObserved = false;
+    landingRefreshSent = false;
+    pollMissionWatchDrone();
+    missionWatchPoll = setInterval(pollMissionWatchDrone, 2000);
+  }
+
   async function refreshTracking(options = {}) {
     const droneId = (trackingState.trackingDroneInput.value || "").trim();
     if (!droneId) {
@@ -135,6 +214,7 @@
 
       updateTrackingPanel(drone);
       updateTrackingMap(drone);
+      updatePortRefreshState(drone, droneId);
 
       if (options.center && drone.last_position) {
         trackingMap.setView(
@@ -157,75 +237,13 @@
     }, 2000);
   }
 
-  function setDroneActionOutput(text) {
-    const output = document.getElementById("drone_action_output");
-    if (output) {
-      output.textContent = text;
-    }
-  }
-
-  async function runDroneAction(action, options = {}) {
-    const button = options.button;
-    const label = options.label || action;
-    const body = options.body || {};
-    const refreshPorts = options.refreshPorts || false;
-
-    if (button) {
-      button.disabled = true;
-    }
-
-    app.setStatus("", `Выполняется: ${label}`);
-    setDroneActionOutput("Выполняю запрос...");
-
-    try {
-      const { response, data } = await app.requestJson(`/api/action/${action}`, {
-        body
-      });
-
-      if (!response.ok || !data.ok) {
-        const errorText = data.traceback || data.error || app.safeStringify(data);
-        app.setStatus("err", `Ошибка: ${label}`);
-        app.setOutputMessage(errorText);
-        setDroneActionOutput(errorText);
-        return;
-      }
-
-      const resultText = data.result_text || app.safeStringify(data.result);
-      app.setStatus("ok", `Готово: ${label}`);
-      app.setOutputMessage(resultText);
-      setDroneActionOutput(resultText);
-
-      if (refreshPorts) {
-        app.emit("port-state:changed", { reason: action, droneId: body.drone_id || controlDroneInput.value });
-      }
-
-      if (action === "drone-state") {
-        const drone = data?.result?.payload?.drone || data?.result?.drone;
-        if (drone) {
-          updateTrackingPanel(drone);
-        }
-      }
-    } catch (error) {
-      const text = String(error);
-      app.setStatus("err", `Ошибка сети: ${label}`);
-      app.setOutputMessage(text);
-      setDroneActionOutput(text);
-    } finally {
-      if (button) {
-        button.disabled = false;
-      }
-    }
-  }
-
   trackingState.trackingDroneInput.addEventListener("input", () => {
     trackingState.trackingDroneInput.dataset.userEdited = "1";
   });
 
-  controlDroneInput.addEventListener("input", () => {
-    if (!trackingState.trackingDroneInput.dataset.userEdited) {
-      trackingState.trackingDroneInput.value = controlDroneInput.value;
-    }
-  });
+  if (missionDroneInput) {
+    missionDroneInput.addEventListener("input", syncDroneInputs);
+  }
 
   document.getElementById("tracking_refresh_btn").addEventListener("click", () => {
     refreshTracking({ center: true });
@@ -240,62 +258,6 @@
     }
   });
 
-  document.getElementById("takeoff_btn").addEventListener("click", (event) => {
-    runDroneAction("takeoff", {
-      label: "Взлет",
-      button: event.currentTarget,
-      body: { drone_id: controlDroneInput.value || "drone-demo-1" },
-      refreshPorts: true
-    });
-  });
-
-  document.getElementById("landing_btn").addEventListener("click", (event) => {
-    runDroneAction("landing", {
-      label: "Посадка",
-      button: event.currentTarget,
-      body: {
-        drone_id: controlDroneInput.value || "drone-demo-1",
-        model: document.getElementById("control_drone_model").value || "DemoCopter-X"
-      },
-      refreshPorts: true
-    });
-  });
-
-  document.getElementById("charging_btn").addEventListener("click", (event) => {
-    runDroneAction("charging", {
-      label: "Зарядка",
-      button: event.currentTarget,
-      body: {
-        drone_id: controlDroneInput.value || "drone-demo-1",
-        battery: Number(document.getElementById("control_battery").value || 30)
-      }
-    });
-  });
-
-  document.getElementById("drone_state_btn").addEventListener("click", (event) => {
-    runDroneAction("drone-state", {
-      label: "Состояние дрона",
-      button: event.currentTarget,
-      body: { drone_id: controlDroneInput.value || "drone-demo-1" }
-    });
-  });
-
-  document.getElementById("drone_snapshot_btn").addEventListener("click", (event) => {
-    runDroneAction("snapshot", {
-      label: "Снимок состояния",
-      button: event.currentTarget,
-      body: { drone_id: controlDroneInput.value || "drone-demo-1" }
-    });
-  });
-
-  document.getElementById("open_tracking_btn").addEventListener("click", () => {
-    if (!trackingState.trackingDroneInput.dataset.userEdited) {
-      trackingState.trackingDroneInput.value = controlDroneInput.value || "drone-demo-1";
-    }
-    app.openPage("tracking_page");
-    refreshTracking({ center: true });
-  });
-
   app.registerPageHandler("tracking_page", () => {
     setTimeout(() => {
       trackingMap.invalidateSize();
@@ -305,11 +267,15 @@
     startTelemetryPolling();
   });
 
-  ["flight_page", "schemes_page", "security_page", "dronoport_page", "status_page", "help_page", "drone_controls_page"].forEach(
+  ["flight_page", "schemes_page", "security_page", "dronoport_page", "status_page", "help_page"].forEach(
     (pageId) => {
       app.registerPageHandler(pageId, stopTelemetryPolling);
     }
   );
+
+  app.on("mission-flight-watch:start", (payload) => {
+    startMissionWatch(payload?.droneId || missionDroneInput?.value || trackingState.trackingDroneInput.value);
+  });
 
   syncDroneInputs();
   setTimeout(() => trackingMap.invalidateSize(), 0);

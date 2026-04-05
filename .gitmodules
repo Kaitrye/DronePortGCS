@@ -1,0 +1,3 @@
+[submodule "external/cyber_drons"]
+	path = external/cyber_drons
+	url = https://gitflic.ru/project/itmoniks/cyber_drons.git

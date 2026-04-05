@@ -22,9 +22,9 @@
   };
 
   const defaultWaypoints = [
-    { lat: 55.751244, lon: 37.618423, alt: 0.0 },
-    { lat: 55.7509, lon: 37.6202, alt: 120.0 },
-    { lat: 55.7524, lon: 37.622, alt: 120.0 }
+    { lat: 55.751244, lon: 37.618423, alt_m: 0.0 },
+    { lat: 55.7509, lon: 37.6202, alt_m: 120.0 },
+    { lat: 55.7524, lon: 37.622, alt_m: 120.0 }
   ];
 
   const map = L.map("map", { zoomControl: true }).setView([55.751244, 37.618423], 14);
@@ -92,13 +92,13 @@
     const waypoints = rows.map((row, index) => {
       const lat = Number(row.querySelector(".waypoint-lat").value);
       const lon = Number(row.querySelector(".waypoint-lon").value);
-      const alt = Number(row.querySelector(".waypoint-alt").value);
+      const altM = Number(row.querySelector(".waypoint-alt").value);
 
-      if ([lat, lon, alt].some((value) => Number.isNaN(value))) {
+      if ([lat, lon, altM].some((value) => Number.isNaN(value))) {
         throw new Error(`Точка ${index + 1} содержит некорректные координаты`);
       }
 
-      return { lat, lon, alt };
+      return { lat, lon, alt_m: altM };
     });
 
     if (!waypoints.length && !options.silent) {
@@ -119,7 +119,7 @@
 
     waypoints.forEach((waypoint, index) => {
       const marker = L.marker([waypoint.lat, waypoint.lon], { draggable: true }).addTo(routeLayer);
-      marker.bindTooltip(`Точка ${index + 1}<br>Высота ${waypoint.alt}`, { direction: "top" });
+      marker.bindTooltip(`Точка ${index + 1}<br>Высота ${waypoint.alt_m}`, { direction: "top" });
       marker.on("dragend", (event) => {
         if (missionFlowStep !== "submit") {
           return;
@@ -177,7 +177,7 @@
         </div>
         <div class="field">
           <label>Высота</label>
-          <input class="waypoint-alt" type="number" step="0.1" value="${waypoint.alt}">
+          <input class="waypoint-alt" type="number" step="0.1" value="${waypoint.alt_m}">
         </div>
         <button class="ghost waypoint-remove" type="button">Убрать</button>
       `;
@@ -202,7 +202,7 @@
     refreshRoute();
   }
 
-  function appendWaypoint(waypoint = { lat: 55.752, lon: 37.621, alt: 120.0 }) {
+  function appendWaypoint(waypoint = { lat: 55.752, lon: 37.621, alt_m: 120.0 }) {
     const existing = collectWaypoints({ silent: true });
     existing.push(waypoint);
     renderWaypoints(existing);
@@ -241,6 +241,15 @@
         setMissionFlow("start");
       } else if (action === "start-task") {
         setMissionFlow("after-start");
+        app.emit("mission-flight-watch:start", {
+          droneId: state.droneIdInput.value
+        });
+        window.setTimeout(() => {
+          app.emit("port-state:changed", {
+            reason: "mission-started",
+            droneId: state.droneIdInput.value
+          });
+        }, 1500);
       }
 
       app.setStatus("ok", `Готово: ${label}`);
@@ -316,7 +325,7 @@
 
   document.getElementById("restart_flow_btn").addEventListener("click", () => {
     state.missionIdInput.value = "";
-    state.droneIdInput.value = "drone-demo-1";
+    state.droneIdInput.value = "";
     renderWaypoints(defaultWaypoints);
     setMissionFlow("submit");
     app.setStatus("", "Сценарий сброшен");
@@ -352,7 +361,7 @@
     appendWaypoint({
       lat: Number(event.latlng.lat.toFixed(6)),
       lon: Number(event.latlng.lng.toFixed(6)),
-      alt: 120.0
+      alt_m: 120.0
     });
   });
 

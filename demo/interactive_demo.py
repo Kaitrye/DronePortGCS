@@ -38,7 +38,8 @@ from systems.gcs.src.orchestrator.topics import (
     ComponentTopics as GCSOrchestratorTopics,
     OrchestratorActions as GCSOrchestratorActions,
 )
-from systems.gcs.topics import DroneTopics
+from systems.gcs.src.drone_manager.topics import ComponentTopics as GCSDroneManagerTopics
+from systems.gcs.topics import DroneActions, DroneTopics
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,25 @@ GCS_DIR = ROOT / "systems" / "gcs"
 DRONE_PORT_DIR = ROOT / "systems" / "drone_port"
 GCS_GENERATED_DIR = GCS_DIR / ".generated"
 DRONE_PORT_GENERATED_DIR = DRONE_PORT_DIR / ".generated"
+CYBER_DRONS_DIR = ROOT / "external" / "cyber_drons"
+AGRODRON_DIR = CYBER_DRONS_DIR / "agrodron"
+AGRODRON_GENERATED_DIR = AGRODRON_DIR / ".generated"
+SITL_STUB_IMAGE = "droneportgcs-sitl-stub:latest"
+SITL_STUB_CONTAINER = "droneportgcs-sitl-stub"
+ORVD_STUB_IMAGE = "droneportgcs-orvd-stub:latest"
+ORVD_STUB_CONTAINER = "droneportgcs-orvd-stub"
+AGRODRON_COMPONENT_SERVICES = [
+    "security_monitor",
+    "journal",
+    "navigation",
+    "autopilot",
+    "limiter",
+    "emergensy",
+    "mission_handler",
+    "motors",
+    "sprayer",
+    "telemetry",
+]
 
 
 def parse_env_file(path: Path) -> Dict[str, str]:
@@ -65,11 +85,16 @@ def parse_env_file(path: Path) -> Dict[str, str]:
     return env
 
 
+def write_env_file(path: Path, env: Dict[str, str]) -> None:
+    lines = [f"{key}={value}" for key, value in env.items()]
+    path.write_text("\n".join(lines) + "\n")
+
+
 def default_task_waypoints() -> List[Dict[str, float]]:
     return [
-        {"lat": 55.751244, "lon": 37.618423, "alt": 0.0},
-        {"lat": 55.750900, "lon": 37.620200, "alt": 120.0},
-        {"lat": 55.752400, "lon": 37.622000, "alt": 120.0},
+        {"lat": 55.751244, "lon": 37.618423, "alt_m": 0.0},
+        {"lat": 55.750900, "lon": 37.620200, "alt_m": 120.0},
+        {"lat": 55.752400, "lon": 37.622000, "alt_m": 120.0},
     ]
 
 
@@ -162,6 +187,17 @@ class DockerInteractiveDemo:
         ]
         return self._run_stream(command, cwd=cwd or ROOT, on_output=on_output)
 
+    def _docker(self, args: List[str], cwd: Path | None = None) -> str:
+        return self._run(["docker", *args], cwd=cwd or ROOT)
+
+    def _docker_stream(
+        self,
+        args: List[str],
+        cwd: Path | None = None,
+        on_output: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        return self._run_stream(["docker", *args], cwd=cwd or ROOT, on_output=on_output)
+
     def ensure_root_env(self) -> str:
         if DOCKER_ENV.exists():
             return f"Using existing env file: {DOCKER_ENV}"
@@ -169,10 +205,67 @@ class DockerInteractiveDemo:
         shutil.copyfile(DOCKER_ENV_EXAMPLE, DOCKER_ENV)
         return f"Created env file from template: {DOCKER_ENV}"
 
+    def ensure_cyber_drons_available(self) -> None:
+        if AGRODRON_DIR.exists():
+            return
+        raise FileNotFoundError(
+            "Submodule external/cyber_drons is missing. Run: git submodule update --init --recursive"
+        )
+
+    def sync_cyber_drons_env(self) -> str:
+        self.ensure_cyber_drons_available()
+        root_env = parse_env_file(DOCKER_ENV)
+        generated_env_path = AGRODRON_GENERATED_DIR / ".env"
+        generated_env = parse_env_file(generated_env_path)
+        synced_keys = [
+            "BROKER_TYPE",
+            "ADMIN_USER",
+            "ADMIN_PASSWORD",
+            "DOCKER_NETWORK",
+            "MQTT_PORT",
+            "KAFKA_PORT",
+            "KAFKA_INTERNAL_PORT",
+        ]
+
+        for key in synced_keys:
+            if key in root_env:
+                generated_env[key] = root_env[key]
+
+        generated_env["BROKER_USER"] = root_env.get("ADMIN_USER", "admin")
+        generated_env["BROKER_PASSWORD"] = root_env.get("ADMIN_PASSWORD", "admin_secret_123")
+        generated_env["MQTT_BROKER"] = "mosquitto"
+        generated_env["KAFKA_BOOTSTRAP_SERVERS"] = "kafka:29092"
+        write_env_file(generated_env_path, generated_env)
+        return f"Synchronized AgroDron broker settings: {generated_env_path}"
+
+    def prepare_cyber_drons(self) -> str:
+        self.ensure_root_env()
+        self.ensure_cyber_drons_available()
+        output = self._run(
+            ["python3", "scripts/prepare_system.py", "agrodron"],
+            cwd=CYBER_DRONS_DIR,
+        )
+        output += "\n" + self.sync_cyber_drons_env()
+        return output
+
+    def prepare_cyber_drons_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
+        self.ensure_root_env()
+        self.ensure_cyber_drons_available()
+        output = self._run_stream(
+            ["python3", "scripts/prepare_system.py", "agrodron"],
+            cwd=CYBER_DRONS_DIR,
+            on_output=on_output,
+        )
+        sync_message = self.sync_cyber_drons_env()
+        if on_output:
+            on_output(f"{sync_message}\n")
+        return output + "\n" + sync_message
+
     def prepare_systems(self) -> str:
         self.ensure_root_env()
         output = [self._run(["python3", "scripts/prepare_system.py", "systems/gcs"])]
         output.append(self._run(["python3", "scripts/prepare_system.py", "systems/drone_port"]))
+        output.append(self.prepare_cyber_drons())
         return "\n".join(output)
 
     def prepare_systems_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
@@ -181,6 +274,7 @@ class DockerInteractiveDemo:
         output.append(
             self._run_stream(["python3", "scripts/prepare_system.py", "systems/drone_port"], on_output=on_output)
         )
+        output.append(self.prepare_cyber_drons_stream(on_output=on_output))
         return "\n".join(output)
 
     def broker_up(self) -> str:
@@ -368,12 +462,372 @@ class DockerInteractiveDemo:
                 output.append((exc.stdout or "") + (exc.stderr or ""))
         return "\n".join(output)
 
+    def cyber_drons_up(self) -> str:
+        env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        profile = env.get("BROKER_TYPE", "mqtt")
+        return self._compose(
+            AGRODRON_GENERATED_DIR / "docker-compose.yml",
+            AGRODRON_GENERATED_DIR / ".env",
+            [
+                "--profile",
+                profile,
+                "up",
+                "-d",
+                "--build",
+                "--no-deps",
+                *AGRODRON_COMPONENT_SERVICES,
+            ],
+            cwd=CYBER_DRONS_DIR,
+        )
+
+    def cyber_drons_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
+        env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        profile = env.get("BROKER_TYPE", "mqtt")
+        compose_file = AGRODRON_GENERATED_DIR / "docker-compose.yml"
+        env_file = AGRODRON_GENERATED_DIR / ".env"
+
+        if not compose_file.exists():
+            raise FileNotFoundError(f"Docker compose file not found: {compose_file}")
+
+        if on_output:
+            on_output("[cyber_drons] Cleaning up existing AgroDron containers...\n")
+
+        try:
+            self._compose_stream(
+                compose_file,
+                env_file,
+                ["down", "--remove-orphans"],
+                cwd=CYBER_DRONS_DIR,
+                on_output=on_output,
+            )
+        except Exception as exc:
+            if on_output:
+                on_output(f"[cyber_drons] Warning during down: {exc}\n")
+
+        if on_output:
+            on_output("[cyber_drons] Starting AgroDron services (--no-deps to reuse broker)...\n")
+
+        return self._compose_stream(
+            compose_file,
+            env_file,
+            [
+                "--profile",
+                profile,
+                "up",
+                "-d",
+                "--build",
+                "--force-recreate",
+                "--remove-orphans",
+                "--no-deps",
+                *AGRODRON_COMPONENT_SERVICES,
+            ],
+            cwd=CYBER_DRONS_DIR,
+            on_output=on_output,
+        )
+
+    def cyber_drons_down(self) -> str:
+        output = []
+        for profile in ("kafka", "mqtt"):
+            try:
+                output.append(
+                    self._compose(
+                        AGRODRON_GENERATED_DIR / "docker-compose.yml",
+                        AGRODRON_GENERATED_DIR / ".env",
+                        ["--profile", profile, "rm", "-sf", *AGRODRON_COMPONENT_SERVICES],
+                        cwd=CYBER_DRONS_DIR,
+                    )
+                )
+            except subprocess.CalledProcessError as exc:
+                output.append((exc.stdout or "") + (exc.stderr or ""))
+        return "\n".join(output)
+
+    def sitl_stub_up(self) -> str:
+        env = parse_env_file(DOCKER_ENV)
+        agrodron_env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        network = env.get("DOCKER_NETWORK", "drones_net")
+        broker_type = env.get("BROKER_TYPE", "mqtt").lower()
+        port = env.get("MQTT_PORT", "1883")
+        user = env.get("ADMIN_USER", "admin")
+        password = env.get("ADMIN_PASSWORD", "admin_secret_123")
+        sitl_topic = agrodron_env.get("SITL_TOPIC", "v1.SITL.SITL001.main")
+        sitl_commands_topic = agrodron_env.get("SITL_COMMANDS_TOPIC", sitl_topic)
+        sitl_drone_id = agrodron_env.get("SITL_DRONE_ID", "drone_001")
+
+        output = []
+        try:
+            output.append(self._docker(["rm", "-f", SITL_STUB_CONTAINER]))
+        except subprocess.CalledProcessError as exc:
+            output.append((exc.stdout or "") + (exc.stderr or ""))
+
+        output.append(
+            self._docker(
+                [
+                    "build",
+                    "-f",
+                    str(ROOT / "components" / "sitl_stub" / "docker" / "Dockerfile"),
+                    "-t",
+                    SITL_STUB_IMAGE,
+                    ".",
+                ]
+            )
+        )
+        output.append(
+            self._docker(
+                [
+                    "run",
+                    "-d",
+                    "--name",
+                    SITL_STUB_CONTAINER,
+                    "--network",
+                    network,
+                    "-e",
+                    f"BROKER_TYPE={broker_type}",
+                    "-e",
+                    "MQTT_BROKER=mosquitto",
+                    "-e",
+                    f"MQTT_PORT={port}",
+                    "-e",
+                    f"BROKER_USER={user}",
+                    "-e",
+                    f"BROKER_PASSWORD={password}",
+                    "-e",
+                    "COMPONENT_ID=sitl_stub",
+                    "-e",
+                    "SYSTEM_NAME=Agrodron",
+                    "-e",
+                    "INSTANCE_ID=Agrodron001",
+                    "-e",
+                    f"SITL_TOPIC={sitl_topic}",
+                    "-e",
+                    f"SITL_COMMANDS_TOPIC={sitl_commands_topic}",
+                    "-e",
+                    f"SITL_DRONE_ID={sitl_drone_id}",
+                    SITL_STUB_IMAGE,
+                ]
+            )
+        )
+        return "\n".join(part for part in output if part)
+
+    def sitl_stub_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
+        env = parse_env_file(DOCKER_ENV)
+        agrodron_env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        network = env.get("DOCKER_NETWORK", "drones_net")
+        broker_type = env.get("BROKER_TYPE", "mqtt").lower()
+        port = env.get("MQTT_PORT", "1883")
+        user = env.get("ADMIN_USER", "admin")
+        password = env.get("ADMIN_PASSWORD", "admin_secret_123")
+        sitl_topic = agrodron_env.get("SITL_TOPIC", "v1.SITL.SITL001.main")
+        sitl_commands_topic = agrodron_env.get("SITL_COMMANDS_TOPIC", sitl_topic)
+        sitl_drone_id = agrodron_env.get("SITL_DRONE_ID", "drone_001")
+        output: List[str] = []
+
+        if on_output:
+            on_output("[sitl_stub] Cleaning up existing container...\n")
+        try:
+            output.append(self._docker_stream(["rm", "-f", SITL_STUB_CONTAINER], on_output=on_output))
+        except subprocess.CalledProcessError as exc:
+            output.append((exc.stdout or "") + (exc.stderr or ""))
+
+        if on_output:
+            on_output("[sitl_stub] Building image...\n")
+        output.append(
+            self._docker_stream(
+                [
+                    "build",
+                    "-f",
+                    str(ROOT / "components" / "sitl_stub" / "docker" / "Dockerfile"),
+                    "-t",
+                    SITL_STUB_IMAGE,
+                    ".",
+                ],
+                on_output=on_output,
+            )
+        )
+
+        if on_output:
+            on_output("[sitl_stub] Starting container...\n")
+        output.append(
+            self._docker_stream(
+                [
+                    "run",
+                    "-d",
+                    "--name",
+                    SITL_STUB_CONTAINER,
+                    "--network",
+                    network,
+                    "-e",
+                    f"BROKER_TYPE={broker_type}",
+                    "-e",
+                    "MQTT_BROKER=mosquitto",
+                    "-e",
+                    f"MQTT_PORT={port}",
+                    "-e",
+                    f"BROKER_USER={user}",
+                    "-e",
+                    f"BROKER_PASSWORD={password}",
+                    "-e",
+                    "COMPONENT_ID=sitl_stub",
+                    "-e",
+                    "SYSTEM_NAME=Agrodron",
+                    "-e",
+                    "INSTANCE_ID=Agrodron001",
+                    "-e",
+                    f"SITL_TOPIC={sitl_topic}",
+                    "-e",
+                    f"SITL_COMMANDS_TOPIC={sitl_commands_topic}",
+                    "-e",
+                    f"SITL_DRONE_ID={sitl_drone_id}",
+                    SITL_STUB_IMAGE,
+                ],
+                on_output=on_output,
+            )
+        )
+        return "\n".join(part for part in output if part)
+
+    def sitl_stub_down(self) -> str:
+        try:
+            return self._docker(["rm", "-f", SITL_STUB_CONTAINER])
+        except subprocess.CalledProcessError as exc:
+            return (exc.stdout or "") + (exc.stderr or "")
+
+    def orvd_stub_up(self) -> str:
+        env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        root_env = parse_env_file(DOCKER_ENV)
+        network = root_env.get("DOCKER_NETWORK", "drones_net")
+        broker_type = root_env.get("BROKER_TYPE", "mqtt").lower()
+        port = root_env.get("MQTT_PORT", "1883")
+        user = root_env.get("ADMIN_USER", "admin")
+        password = root_env.get("ADMIN_PASSWORD", "admin_secret_123")
+        orvd_topic = env.get("ORVD_TOPIC", "v1.ORVD.ORVD001.main")
+
+        output = []
+        try:
+            output.append(self._docker(["rm", "-f", ORVD_STUB_CONTAINER]))
+        except subprocess.CalledProcessError as exc:
+            output.append((exc.stdout or "") + (exc.stderr or ""))
+
+        output.append(
+            self._docker(
+                [
+                    "build",
+                    "-f",
+                    str(ROOT / "components" / "orvd_stub" / "docker" / "Dockerfile"),
+                    "-t",
+                    ORVD_STUB_IMAGE,
+                    ".",
+                ]
+            )
+        )
+        output.append(
+            self._docker(
+                [
+                    "run",
+                    "-d",
+                    "--name",
+                    ORVD_STUB_CONTAINER,
+                    "--network",
+                    network,
+                    "-e",
+                    f"BROKER_TYPE={broker_type}",
+                    "-e",
+                    "MQTT_BROKER=mosquitto",
+                    "-e",
+                    f"MQTT_PORT={port}",
+                    "-e",
+                    f"BROKER_USER={user}",
+                    "-e",
+                    f"BROKER_PASSWORD={password}",
+                    "-e",
+                    f"ORVD_TOPIC={orvd_topic}",
+                    "-e",
+                    "COMPONENT_ID=orvd_stub",
+                    ORVD_STUB_IMAGE,
+                ]
+            )
+        )
+        return "\n".join(part for part in output if part)
+
+    def orvd_stub_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
+        env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        root_env = parse_env_file(DOCKER_ENV)
+        network = root_env.get("DOCKER_NETWORK", "drones_net")
+        broker_type = root_env.get("BROKER_TYPE", "mqtt").lower()
+        port = root_env.get("MQTT_PORT", "1883")
+        user = root_env.get("ADMIN_USER", "admin")
+        password = root_env.get("ADMIN_PASSWORD", "admin_secret_123")
+        orvd_topic = env.get("ORVD_TOPIC", "v1.ORVD.ORVD001.main")
+        output: List[str] = []
+
+        if on_output:
+            on_output("[orvd_stub] Cleaning up existing container...\n")
+        try:
+            output.append(self._docker_stream(["rm", "-f", ORVD_STUB_CONTAINER], on_output=on_output))
+        except subprocess.CalledProcessError as exc:
+            output.append((exc.stdout or "") + (exc.stderr or ""))
+
+        if on_output:
+            on_output("[orvd_stub] Building image...\n")
+        output.append(
+            self._docker_stream(
+                [
+                    "build",
+                    "-f",
+                    str(ROOT / "components" / "orvd_stub" / "docker" / "Dockerfile"),
+                    "-t",
+                    ORVD_STUB_IMAGE,
+                    ".",
+                ],
+                on_output=on_output,
+            )
+        )
+
+        if on_output:
+            on_output("[orvd_stub] Starting container...\n")
+        output.append(
+            self._docker_stream(
+                [
+                    "run",
+                    "-d",
+                    "--name",
+                    ORVD_STUB_CONTAINER,
+                    "--network",
+                    network,
+                    "-e",
+                    f"BROKER_TYPE={broker_type}",
+                    "-e",
+                    "MQTT_BROKER=mosquitto",
+                    "-e",
+                    f"MQTT_PORT={port}",
+                    "-e",
+                    f"BROKER_USER={user}",
+                    "-e",
+                    f"BROKER_PASSWORD={password}",
+                    "-e",
+                    f"ORVD_TOPIC={orvd_topic}",
+                    "-e",
+                    "COMPONENT_ID=orvd_stub",
+                    ORVD_STUB_IMAGE,
+                ],
+                on_output=on_output,
+            )
+        )
+        return "\n".join(part for part in output if part)
+
+    def orvd_stub_down(self) -> str:
+        try:
+            return self._docker(["rm", "-f", ORVD_STUB_CONTAINER])
+        except subprocess.CalledProcessError as exc:
+            return (exc.stdout or "") + (exc.stderr or "")
+
     def up_all(self) -> str:
         output = [
             self.prepare_systems(),
             self.broker_up(),
             self.gcs_up(),
             self.drone_port_up(),
+            self.sitl_stub_up(),
+            self.orvd_stub_up(),
+            self.cyber_drons_up(),
         ]
         self.wait_for_broker()
         self.connect_bus()
@@ -398,6 +852,12 @@ class DockerInteractiveDemo:
         output.append(self.gcs_up_stream(on_output=on_output))
         emit("==> Starting DronePort")
         output.append(self.drone_port_up_stream(on_output=on_output))
+        emit("==> Starting SITL stub")
+        output.append(self.sitl_stub_up_stream(on_output=on_output))
+        emit("==> Starting ORVD stub")
+        output.append(self.orvd_stub_up_stream(on_output=on_output))
+        emit("==> Starting AgroDron")
+        output.append(self.cyber_drons_up_stream(on_output=on_output))
         emit("==> Waiting for broker socket")
         emit(self.wait_for_broker())
         emit("==> Connecting demo bus")
@@ -407,7 +867,15 @@ class DockerInteractiveDemo:
         return "\n".join(output)
 
     def down_all(self) -> str:
-        output = [self.disconnect_bus(), self.drone_port_down(), self.gcs_down(), self.broker_down()]
+        output = [
+            self.disconnect_bus(),
+            self.cyber_drons_down(),
+            self.sitl_stub_down(),
+            self.orvd_stub_down(),
+            self.drone_port_down(),
+            self.gcs_down(),
+            self.broker_down(),
+        ]
         return "\n".join(part for part in output if part)
 
     def gcs_interactive_up(self) -> str:
@@ -463,6 +931,25 @@ class DockerInteractiveDemo:
         output.append(self._compose(GCS_GENERATED_DIR / "docker-compose.yml", GCS_GENERATED_DIR / ".env", ["ps"]))
         output.append("[drone_port]")
         output.append(self._compose(DRONE_PORT_GENERATED_DIR / "docker-compose.yml", DRONE_PORT_GENERATED_DIR / ".env", ["ps"]))
+        output.append("[cyber_drons]")
+        output.append(
+            self._compose(
+                AGRODRON_GENERATED_DIR / "docker-compose.yml",
+                AGRODRON_GENERATED_DIR / ".env",
+                ["ps"],
+                cwd=CYBER_DRONS_DIR,
+            )
+        )
+        output.append("[sitl_stub]")
+        try:
+            output.append(self._docker(["ps", "-a", "--filter", f"name={SITL_STUB_CONTAINER}"]))
+        except subprocess.CalledProcessError as exc:
+            output.append((exc.stdout or "") + (exc.stderr or ""))
+        output.append("[orvd_stub]")
+        try:
+            output.append(self._docker(["ps", "-a", "--filter", f"name={ORVD_STUB_CONTAINER}"]))
+        except subprocess.CalledProcessError as exc:
+            output.append((exc.stdout or "") + (exc.stderr or ""))
         return "\n".join(output)
 
     def drone_port_health(self) -> Dict[str, Any]:
@@ -545,19 +1032,32 @@ class DockerInteractiveDemo:
         if stack == "broker":
             compose_file = DOCKER_DIR / "docker-compose.yml"
             env_file = DOCKER_ENV
+            cwd = ROOT
         elif stack == "gcs":
             compose_file = GCS_GENERATED_DIR / "docker-compose.yml"
             env_file = GCS_GENERATED_DIR / ".env"
+            cwd = ROOT
         elif stack == "drone_port":
             compose_file = DRONE_PORT_GENERATED_DIR / "docker-compose.yml"
             env_file = DRONE_PORT_GENERATED_DIR / ".env"
+            cwd = ROOT
+        elif stack == "cyber_drons":
+            compose_file = AGRODRON_GENERATED_DIR / "docker-compose.yml"
+            env_file = AGRODRON_GENERATED_DIR / ".env"
+            cwd = CYBER_DRONS_DIR
+        elif stack == "sitl_stub":
+            args = ["logs", "--tail", str(tail), SITL_STUB_CONTAINER]
+            return self._docker(args, cwd=ROOT)
+        elif stack == "orvd_stub":
+            args = ["logs", "--tail", str(tail), ORVD_STUB_CONTAINER]
+            return self._docker(args, cwd=ROOT)
         else:
-            raise ValueError("stack must be one of: broker, gcs, drone_port")
+            raise ValueError("stack must be one of: broker, gcs, drone_port, cyber_drons, sitl_stub, orvd_stub")
 
         args = ["logs", "--tail", str(tail)]
         if service:
             args.append(service)
-        return self._compose(compose_file, env_file, args)
+        return self._compose(compose_file, env_file, args, cwd=cwd)
 
     def _client_env(self) -> Dict[str, str]:
         env = parse_env_file(DOCKER_ENV)
@@ -705,6 +1205,28 @@ class DockerInteractiveDemo:
             timeout=timeout,
         )
 
+    def request_with_sender(
+        self,
+        topic: str,
+        action: str,
+        payload: Optional[Dict[str, Any]] = None,
+        *,
+        sender: str,
+        timeout: float = 15.0,
+    ) -> Optional[Dict[str, Any]]:
+        if self.bus is None:
+            self.connect_bus()
+
+        return self.bus.request(
+            topic,
+            {
+                "action": action,
+                "sender": sender,
+                "payload": payload or {},
+            },
+            timeout=timeout,
+        )
+
     def publish(self, topic: str, action: str, payload: Optional[Dict[str, Any]] = None) -> bool:
         if self.bus is None:
             self.connect_bus()
@@ -718,13 +1240,25 @@ class DockerInteractiveDemo:
             },
         )
 
-    def request_landing(self, drone_id: str, model: str = "DemoCopter-X") -> Optional[Dict[str, Any]]:
-        return self.request(
-            DronePortDroneManagerTopics.DRONE_MANAGER,
-            DronePortDroneManagerActions.REQUEST_LANDING,
-            {"drone_id": drone_id, "model": model},
+    def _request_agrodron_autopilot_command(self, command: str) -> Optional[Dict[str, Any]]:
+        return self.request_with_sender(
+            DroneTopics.SECURITY_MONITOR,
+            DroneActions.PROXY_REQUEST,
+            {
+                "target": {
+                    "topic": DroneTopics.AUTOPILOT,
+                    "action": DroneActions.CMD,
+                },
+                "data": {
+                    "command": command,
+                },
+            },
+            sender=GCSDroneManagerTopics.GCS_DRONE,
             timeout=15.0,
         )
+
+    def request_landing(self, drone_id: str, model: str = "DemoCopter-X") -> Optional[Dict[str, Any]]:
+        return self._request_agrodron_autopilot_command("KOVER")
 
     def request_charging(self, drone_id: str, battery: float) -> Dict[str, Any]:
         self.publish(
@@ -745,12 +1279,7 @@ class DockerInteractiveDemo:
         return None
 
     def request_takeoff(self, drone_id: str) -> Optional[Dict[str, Any]]:
-        return self.request(
-            DronePortDroneManagerTopics.DRONE_MANAGER,
-            DronePortDroneManagerActions.REQUEST_TAKEOFF,
-            {"drone_id": drone_id},
-            timeout=15.0,
-        )
+        return self._request_agrodron_autopilot_command("START")
 
     def get_ports(self) -> Optional[Dict[str, Any]]:
         return self.request(

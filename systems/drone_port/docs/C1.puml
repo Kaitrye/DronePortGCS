@@ -8,8 +8,7 @@ System_Ext(drone, "Дрон", "Запрашивает посадку, взлет
 System_Ext(sitl, "SITL", "Внешняя среда симуляции, получающая данные о начальных координатах дронов")
 
 Rel(operator_system, drone_port, "get_available_drones")
-Rel(drone, drone_port, "request_landing / request_takeoff / request_charging")
+Rel(drone, drone_port, "request_landing / request_departure / request_charging")
 Rel(drone_port, sitl, "started_takeoff")
 
 @enduml
-

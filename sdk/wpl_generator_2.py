@@ -3,18 +3,18 @@
 #     { //точка start - дронопорт
 #     "lat": float,
 #     "lon": float,
-#     "alt": float,
+#     "alt_m": float,
 #     },
 #
 #     { //точка 2 - левый нижний угол прямоугольника
 #     "lat": float,
 #     "lon": float,
-#     "alt": float,
+#     "alt_m": float,
 #     },
 #     { //точка 3 - правый верхний угол прямоугольника
 #     "lat": float,
 #     "lon": float,
-#     "alt": float,
+#     "alt_m": float,
 #     }
 
 import json
@@ -105,11 +105,11 @@ def _lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
 
 
-def _point(lat, lon, alt):
+def _point(lat, lon, alt_m):
     return {
         "lat": float(lat),
         "lon": float(lon),
-        "alt": float(alt),
+        "alt_m": float(alt_m),
         "param1": DEFAULT_PARAM1,
         "param2": DEFAULT_PARAM2,
         "param3": DEFAULT_PARAM3,
@@ -132,7 +132,7 @@ def _interpolate_line(p0, p1, segments: int):
             _point(
                 _lerp(p0["lat"], p1["lat"], t),
                 _lerp(p0["lon"], p1["lon"], t),
-                _lerp(p0["alt"], p1["alt"], t),
+                _lerp(p0["alt_m"], p1["alt_m"], t),
             )
         )
     return out
@@ -145,7 +145,7 @@ def expand_three_points_to_snake_path(
     rect_segments_y: int = DEFAULT_RECT_SEGMENTS_Y,
 ):
     """
-    Вход: 3 точки (start, rect_bottom_left, rect_top_right) со значениями lat/lon/alt.
+    Вход: 3 точки (start, rect_bottom_left, rect_top_right) со значениями lat/lon/alt_m.
     Выход: путь:
       1) прямая 1->2 (line_segments сегментов)
       2) змейка по прямоугольнику от 2 до 3:
@@ -171,11 +171,11 @@ def expand_three_points_to_snake_path(
     def read_point(p, idx):
         lat = to_float(get_required(p, "lat", idx), "lat")
         lon = to_float(get_required(p, "lon", idx), "lon")
-        alt = to_float(get_required(p, "alt", idx), "alt")
+        alt = to_float(get_required(p, "alt_m", idx), "alt_m")
         validate_lat_lon(lat, lon)
         if alt < 0:
             raise ValueError(f"Altitude must be >=0, got point #{idx}: {alt}")
-        return {"lat": lat, "lon": lon, "alt": alt}
+        return {"lat": lat, "lon": lon, "alt_m": alt}
 
     p1 = read_point(p1_raw, 0)
     p2 = read_point(p2_raw, 1)  # левый нижний
@@ -230,7 +230,7 @@ def expand_three_points_to_snake_path(
     snake_xy[0] = (0.0, 0.0)
     snake_xy[-1] = (W, H)
 
-    # snake_xy -> snake (lat/lon/alt) + интерполяция высоты
+    # snake_xy -> snake (lat/lon/alt_m) + интерполяция высоты
     snake_total_points = len(snake_xy)
     if snake_total_points < 2:
         raise ValueError("Snake path is too short")
@@ -238,15 +238,15 @@ def expand_three_points_to_snake_path(
     snake = []
     for n, (xx, yy) in enumerate(snake_xy):
         progress = n / (snake_total_points - 1)
-        alt = _lerp(p2["alt"], p3["alt"], progress)
+        alt = _lerp(p2["alt_m"], p3["alt_m"], progress)
 
         lat, lon = _local_xy_to_ll(xx, yy, p2["lat"], p2["lon"])
         validate_lat_lon(lat, lon)
         snake.append(_point(lat, lon, alt))
 
     # Зафиксируем начало/конец точно по входу (микропогрешности преобразования)
-    snake[0] = _point(p2["lat"], p2["lon"], p2["alt"])
-    snake[-1] = _point(p3["lat"], p3["lon"], p3["alt"])
+    snake[0] = _point(p2["lat"], p2["lon"], p2["alt_m"])
+    snake[-1] = _point(p3["lat"], p3["lon"], p3["alt_m"])
 
     # 3) Прямая p3->p1
     leg_31 = _interpolate_line(p3, p1, segments=line_segments)
@@ -267,7 +267,7 @@ def points_to_wpl(points, frame=DEFAULT_FRAME):
 
         lat = to_float(get_required(p, "lat", i), "lat")
         lon = to_float(get_required(p, "lon", i), "lon")
-        alt = to_float(get_required(p, "alt", i), "alt")
+        alt = to_float(get_required(p, "alt_m", i), "alt_m")
         validate_lat_lon(lat, lon)
 
         if alt < 0:

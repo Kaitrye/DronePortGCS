@@ -173,7 +173,7 @@ def test_handle_mission_start(component, mock_bus, monkeypatch):
     monkeypatch.setattr(component, "_start_telemetry_polling", lambda drone_id: started.append(drone_id))
     mock_bus.request.return_value = {"target_response": {"success": True, "payload": {"ok": True, "state": "EXECUTING"}}}
 
-    component._handle_mission_start(
+    response = component._handle_mission_start(
         {
             "payload": {"mission_id": "m-run", "drone_id": "dr-3"},
             "correlation_id": "corr-5",
@@ -226,6 +226,37 @@ def test_handle_mission_start(component, mock_bus, monkeypatch):
         },
     )
     assert started == ["dr-3"]
+    assert response == {
+        "ok": True,
+        "mission_id": "m-run",
+        "drone_id": "dr-3",
+        "start_response": {"success": True, "payload": {"ok": True, "state": "EXECUTING"}},
+    }
+
+
+def test_handle_mission_start_does_not_update_state_when_drone_rejects(component, mock_bus, monkeypatch):
+    started = []
+    monkeypatch.setattr(component, "_start_telemetry_polling", lambda drone_id: started.append(drone_id))
+    mock_bus.request.return_value = {
+        "target_response": {"success": True, "payload": {"ok": False, "error": "orvd_departure_denied"}}
+    }
+
+    response = component._handle_mission_start(
+        {
+            "payload": {"mission_id": "m-run", "drone_id": "dr-3"},
+            "correlation_id": "corr-6",
+        }
+    )
+
+    assert mock_bus.publish.call_count == 0
+    assert started == []
+    assert response == {
+        "ok": False,
+        "mission_id": "m-run",
+        "drone_id": "dr-3",
+        "error": "orvd_departure_denied",
+        "start_response": {"success": True, "payload": {"ok": False, "error": "orvd_departure_denied"}},
+    }
 
 
 def test_poll_telemetry_loop_requests_drone_and_saves_response(component, mock_bus, monkeypatch):

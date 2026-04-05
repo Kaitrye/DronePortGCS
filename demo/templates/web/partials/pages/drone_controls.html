@@ -9,7 +9,7 @@
         <div class="panel-body">
           <div class="field">
             <label for="control_drone_id">ID дрона</label>
-            <input id="control_drone_id" value="drone-demo-1">
+            <input id="control_drone_id" placeholder="Берется из поля ID дрона">
           </div>
           <div class="field" style="margin-top: 10px;">
             <label for="control_drone_model">Модель</label>
@@ -20,8 +20,6 @@
             <input id="control_battery" type="number" min="0" max="100" step="1" value="30">
           </div>
           <div class="button-grid" style="margin-top: 12px;">
-            <button id="takeoff_btn" type="button">Взлет</button>
-            <button class="secondary" id="landing_btn" type="button">Посадка</button>
             <button class="ghost" id="charging_btn" type="button">Зарядка</button>
             <button class="ghost" id="drone_state_btn" type="button">Состояние</button>
           </div>
@@ -30,7 +28,7 @@
             <button class="ghost" id="open_tracking_btn" type="button">Открыть телеметрию</button>
           </div>
           <div class="hint" style="margin-top: 10px;">
-            Автообновление портов дронопорта выполняется только после команд взлета и посадки.
+            Взлет и посадка выполняются только через сценарий миссии в разделе "НУС". В этом разделе доступны зарядка, состояние и телеметрия борта.
           </div>
         </div>
       </section>

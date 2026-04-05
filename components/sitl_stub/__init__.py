@@ -1,0 +1,1 @@
+"""SITL stub component package."""

@@ -9,6 +9,12 @@ from broker.src.system_bus import SystemBus
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 
 
+DEFAULT_DEMO_DRONE_ID = "Agrodron001"
+DEFAULT_DEMO_DRONE_MODEL = "AgroDron"
+DEFAULT_DEMO_DRONE_PORT_ID = "P-01"
+DEFAULT_DEMO_DRONE_BATTERY = "100"
+
+
 class DroneRegistry(BaseComponent):
     def __init__(
         self,
@@ -25,6 +31,7 @@ class DroneRegistry(BaseComponent):
             socket_connect_timeout=2,
             socket_timeout=2,
         )
+        self._seed_default_demo_drone()
 
         super().__init__(
             component_id=component_id,
@@ -33,6 +40,25 @@ class DroneRegistry(BaseComponent):
             bus=bus,
         )
         self.name = name
+
+    def _seed_default_demo_drone(self) -> None:
+        key = f"drone:{DEFAULT_DEMO_DRONE_ID}"
+        if self.redis.hgetall(key):
+            return
+
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        self.redis.hset(
+            key,
+            mapping={
+                "drone_id": DEFAULT_DEMO_DRONE_ID,
+                "model": DEFAULT_DEMO_DRONE_MODEL,
+                "port_id": DEFAULT_DEMO_DRONE_PORT_ID,
+                "battery": DEFAULT_DEMO_DRONE_BATTERY,
+                "status": "ready",
+                "registered_at": now,
+                "updated_at": now,
+            },
+        )
 
     def _register_handlers(self) -> None:
         self.register_handler(DroneRegistryActions.REGISTER_DRONE, self._handle_register_drone)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import atexit
 import os
+import signal
 import traceback
 
 from flask import Flask
@@ -10,27 +12,63 @@ from demo.webui.runtime import DEMO_ROOT, demo
 from demo.webui.utils import discover_bind_urls, env_bool
 
 
+_CLEANUP_DONE = False
+
+
+def cleanup_demo_stack() -> None:
+    global _CLEANUP_DONE
+    if _CLEANUP_DONE:
+        return
+
+    _CLEANUP_DONE = True
+    print("\n[shutdown] Stopping demo stack...")
+    try:
+        output = demo.down_all()
+        if output:
+            print(output)
+        print("[shutdown] Demo stack stopped.")
+    except Exception as exc:
+        print(f"[shutdown] Failed to stop demo stack cleanly: {exc}")
+        print(f"[shutdown] Traceback: {traceback.format_exc()}")
+
+
+def _handle_exit_signal(signum, _frame) -> None:
+    signal_name = signal.Signals(signum).name
+    print(f"\n[shutdown] Received {signal_name}.")
+    cleanup_demo_stack()
+    raise SystemExit(128 + signum)
+
+
 def bootstrap_gcs_stack() -> None:
     auto_bootstrap = env_bool("GCS_WEB_AUTO_BOOTSTRAP", True)
     if not auto_bootstrap:
         return
 
-    print("[bootstrap] Starting stack: broker → GCS → DronePort")
+    print("[bootstrap] Starting stack: broker → GCS → DronePort → SITL stub → ORVD stub → AgroDron")
     try:
-        print("[bootstrap] Step 1/5: Preparing systems... ")
+        print("[bootstrap] Step 1/8: Preparing systems... ")
         demo.prepare_systems_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 2/5: Starting broker (shared)... ")
+        print("\n[bootstrap] Step 2/8: Starting broker (shared)... ")
         demo.broker_up_stream(on_output=lambda chunk: print(chunk, end=""))
         demo.wait_for_broker(timeout=90)
 
-        print("\n[bootstrap] Step 3/5: Starting GCS... ")
+        print("\n[bootstrap] Step 3/8: Starting GCS... ")
         demo.gcs_up_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 4/5: Starting DronePort (no broker)... ")
+        print("\n[bootstrap] Step 4/8: Starting DronePort (no broker)... ")
         demo.drone_port_up_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 5/5: Connecting and waiting for readiness... ")
+        print("\n[bootstrap] Step 5/8: Starting SITL stub... ")
+        demo.sitl_stub_up_stream(on_output=lambda chunk: print(chunk, end=""))
+
+        print("\n[bootstrap] Step 6/8: Starting ORVD stub... ")
+        demo.orvd_stub_up_stream(on_output=lambda chunk: print(chunk, end=""))
+
+        print("\n[bootstrap] Step 7/8: Starting AgroDron (no broker)... ")
+        demo.cyber_drons_up_stream(on_output=lambda chunk: print(chunk, end=""))
+
+        print("\n[bootstrap] Step 8/8: Connecting and waiting for readiness... ")
         demo.connect_bus()
         demo.wait_until_ready(timeout=180)
 
@@ -59,6 +97,9 @@ def create_app() -> Flask:
 def run_server() -> None:
     app = create_app()
     app.jinja_env.auto_reload = True
+    atexit.register(cleanup_demo_stack)
+    signal.signal(signal.SIGINT, _handle_exit_signal)
+    signal.signal(signal.SIGTERM, _handle_exit_signal)
     bootstrap_gcs_stack()
 
     host = os.environ.get("GCS_WEB_HOST", "0.0.0.0")
@@ -69,4 +110,7 @@ def run_server() -> None:
     for url in discover_bind_urls(host, port):
         print(f"[web]   {url}")
 
-    app.run(host=host, port=port, debug=debug, threaded=True)
+    try:
+        app.run(host=host, port=port, debug=debug, threaded=True)
+    finally:
+        cleanup_demo_stack()

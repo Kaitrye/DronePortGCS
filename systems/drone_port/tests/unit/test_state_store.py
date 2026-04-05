@@ -8,6 +8,8 @@ def test_state_store_seeds_default_ports_with_coordinates(mock_bus, patch_dronep
 
     assert len(result["ports"]) == 4
     assert result["ports"][0]["port_id"] == "P-01"
+    assert result["ports"][0]["drone_id"] == "Agrodron001"
+    assert result["ports"][0]["status"] == "reserved"
     assert result["ports"][0]["lat"] == "55.751000"
     assert result["ports"][0]["lon"] == "37.617000"
 

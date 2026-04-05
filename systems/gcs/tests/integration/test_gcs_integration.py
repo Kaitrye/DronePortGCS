@@ -76,8 +76,8 @@ def _wait_mission_in_store(system_bus, mission_id, retries=6, delay=1.5, predica
 def _build_task_payload(start_lat=55.751244, start_lon=37.618423, end_lat=55.761244, end_lon=37.628423):
     return {
         "waypoints": [
-            {"lat": start_lat, "lon": start_lon, "alt": 120},
-            {"lat": end_lat, "lon": end_lon, "alt": 130},
+            {"lat": start_lat, "lon": start_lon, "alt_m": 120},
+            {"lat": end_lat, "lon": end_lon, "alt_m": 130},
         ],
     }
 
@@ -214,8 +214,8 @@ def test_path_planner_direct_plan_persists_mission(system_bus):
                 "mission_id": mission_id,
                 "task": {
                     "waypoints": [
-                        {"lat": 59.9311, "lon": 30.3609, "alt": 80},
-                        {"lat": 59.9411, "lon": 30.3709, "alt": 95},
+                        {"lat": 59.9311, "lon": 30.3609, "alt_m": 80},
+                        {"lat": 59.9411, "lon": 30.3709, "alt_m": 95},
                     ],
                 },
             },

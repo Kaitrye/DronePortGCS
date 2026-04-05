@@ -26,7 +26,7 @@ System_Boundary(drone_port, "Дронопорт") {
 Rel(operator_system, orchestrator, "get_available_drones", $tags="external_flow")
 Rel(orchestrator, drone_registry, "get_available_drones", $tags="trusted_flow")
 
-Rel(drone, drone_manager, "request_landing / request_takeoff / request_charging", $tags="external_flow")
+Rel(drone, drone_manager, "request_landing / request_departure / request_charging", $tags="external_flow")
 Rel(drone_manager, sitl, "started_takeoff", $tags="trusted_flow")
 
 Rel(drone_manager, port_manager, "request_landing / get_port_status / free_slot", $tags="trusted_flow")

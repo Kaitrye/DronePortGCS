@@ -22,7 +22,7 @@ System_Boundary(drone_port, "Дронопорт") {
 Rel(operator_system, orchestrator, "get_available_drones")
 Rel(orchestrator, drone_registry, "get_available_drones", "request")
 
-Rel(drone, drone_manager, "request_landing / request_takeoff / request_charging")
+Rel(drone, drone_manager, "request_landing / request_departure / request_charging")
 Rel(drone_manager, drone, "land_at_port_id / takeoff_allowed")
 Rel(drone_manager, sitl, "started_takeoff", "publish")
 

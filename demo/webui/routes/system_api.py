@@ -51,8 +51,8 @@ def logs():
         stack = payload.get("stack", "broker")
         service = optional_text(payload.get("service"))
         tail = int(payload.get("tail", 100))
-        if stack not in {"broker", "gcs", "drone_port"}:
-            raise ValueError("stack must be one of: broker, gcs, drone_port")
+        if stack not in {"broker", "gcs", "drone_port", "cyber_drons"}:
+            raise ValueError("stack must be one of: broker, gcs, drone_port, cyber_drons")
         return demo.logs(stack=stack, service=service, tail=tail)
 
     from demo.webui.utils import execute

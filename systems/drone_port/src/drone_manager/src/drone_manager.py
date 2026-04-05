@@ -1,6 +1,7 @@
 """
 DroneManager — взаимодействие с физическими дронами.
 """
+import os
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
@@ -8,6 +9,14 @@ from systems.drone_port.src.charging_manager.topics import ComponentTopics as Ch
 from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics, DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
+
+
+class ExternalTopics:
+    SITL = (os.environ.get("SITL_TOPIC") or "v1.SITL.SITL001.main").strip()
+
+
+class SITLActions:
+    STARTED_TAKEOFF = "started_takeoff"
 
 
 def _extract_payload(response: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -27,6 +36,15 @@ def _parse_battery_value(raw_value: Any) -> float | None:
         return float(raw_value)
     except (TypeError, ValueError):
         return None
+
+
+def _drone_id_from_sender(sender: Any) -> str | None:
+    if not isinstance(sender, str):
+        return None
+    parts = [part for part in sender.split(".") if part]
+    if len(parts) < 4:
+        return None
+    return parts[2] or None
 
 
 class DroneManager(BaseComponent):
@@ -53,7 +71,7 @@ class DroneManager(BaseComponent):
 
     def _register_handlers(self) -> None:
         self.register_handler(DroneManagerActions.REQUEST_LANDING, self._handle_landing)
-        self.register_handler(DroneManagerActions.REQUEST_TAKEOFF, self._handle_takeoff)
+        self.register_handler(DroneManagerActions.REQUEST_DEPARTURE, self._handle_takeoff)
         self.register_handler(DroneManagerActions.REQUEST_CHARGING, self._handle_charging)
 
     def _handle_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
@@ -61,7 +79,7 @@ class DroneManager(BaseComponent):
         Запрос на посадку от дрона.
         """
         payload = message.get("payload", {})
-        drone_id = payload.get("drone_id")
+        drone_id = payload.get("drone_id") or _drone_id_from_sender(message.get("sender"))
         model = payload.get("model", "unknown")
 
         response = self.bus.request(
@@ -93,7 +111,9 @@ class DroneManager(BaseComponent):
 
             port_id = response_payload.get("port_id")
             return {
+                "approved": True,
                 "port_id": port_id,
+                "drone_id": drone_id,
                 "from": self.component_id,
             }
         
@@ -106,8 +126,8 @@ class DroneManager(BaseComponent):
         """
         Запрос на взлет от дрона.
         """
-        payload = message.get("payload")
-        drone_id = payload.get("drone_id")
+        payload = message.get("payload") or {}
+        drone_id = payload.get("drone_id") or _drone_id_from_sender(message.get("sender"))
         port_response = self.bus.request(
             PortTopics.PORT_MANAGER,
             {
@@ -175,8 +195,10 @@ class DroneManager(BaseComponent):
                 )
 
                 return {
+                    "approved": True,
                     "battery": battery,
                     "port_id": port_id,
+                    "drone_id": drone_id,
                     "port_coordinates": {
                         "lat": (drone_port or {}).get("lat"),
                         "lon": (drone_port or {}).get("lon"),

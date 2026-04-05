@@ -40,4 +40,5 @@ STREAMING_ACTIONS: Dict[str, Callable[[Callable[[str], None]], Any]] = {
     "gcs-up": demo.gcs_up_stream,
     "gcs-interactive-up": demo.gcs_interactive_up_stream,
     "drone-port-up": demo.drone_port_up_stream,
+    "cyber-drons-up": demo.cyber_drons_up_stream,
 }

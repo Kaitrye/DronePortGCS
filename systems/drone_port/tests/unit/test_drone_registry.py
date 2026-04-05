@@ -1,6 +1,17 @@
 from systems.drone_port.src.drone_registry.src.drone_registry import DroneRegistry
 
 
+def test_registry_seeds_default_demo_drone(mock_bus, patch_droneport_redis):
+    registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
+
+    saved = registry.redis.hgetall("drone:Agrodron001")
+    assert saved["drone_id"] == "Agrodron001"
+    assert saved["model"] == "AgroDron"
+    assert saved["port_id"] == "P-01"
+    assert saved["battery"] == "100"
+    assert saved["status"] == "ready"
+
+
 def test_register_drone_stores_metadata(mock_bus, patch_droneport_redis):
     registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
 
@@ -22,7 +33,9 @@ def test_get_available_drones_returns_ready_only(mock_bus, patch_droneport_redis
 
     result = registry._handle_get_available_drones({"payload": {}})
 
-    assert result["drones"] == [{"drone_id": "DR-1", "status": "ready"}]
+    ready_by_id = {drone["drone_id"]: drone for drone in result["drones"]}
+    assert ready_by_id["Agrodron001"]["status"] == "ready"
+    assert ready_by_id["DR-1"]["status"] == "ready"
     assert result["from"] == "registry"
 
 
