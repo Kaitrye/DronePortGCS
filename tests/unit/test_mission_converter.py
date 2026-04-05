@@ -12,10 +12,10 @@ def component(mock_bus):
 
 def test_to_wpl_serializes_explicit_waypoints_via_sdk(component):
     points = [
-        {"lat": 55.1, "lon": 37.2, "alt": 100},
-        {"lat": 55.2, "lon": 37.3, "alt": 110},
-        {"lat": 55.3, "lon": 37.4, "alt": 120},
-        {"lat": 55.4, "lon": 37.5, "alt": 130},
+        {"lat": 55.1, "lon": 37.2, "alt_m": 100},
+        {"lat": 55.2, "lon": 37.3, "alt_m": 110},
+        {"lat": 55.3, "lon": 37.4, "alt_m": 120},
+        {"lat": 55.4, "lon": 37.5, "alt_m": 130},
     ]
 
     result = points_to_wpl_v2(points)
@@ -27,8 +27,8 @@ def test_to_wpl_serializes_explicit_waypoints_via_sdk(component):
 def test_handle_mission_prepare_returns_wpl(component, mock_bus):
     mission = {
         "waypoints": [
-            {"lat": 10.0, "lon": 20.0, "alt": 30.0},
-            {"lat": 11.0, "lon": 21.0, "alt": 31.0},
+            {"lat": 10.0, "lon": 20.0, "alt_m": 30.0},
+            {"lat": 11.0, "lon": 21.0, "alt_m": 31.0},
         ]
     }
     mock_bus.request.return_value = {

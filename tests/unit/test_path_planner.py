@@ -14,8 +14,8 @@ def component(mock_bus):
 
 def test_build_route_two_points_uses_sdk_generator(component):
     waypoints = [
-        {"lat": 10.0, "lon": 20.0, "alt": 30.0},
-        {"lat": 16.0, "lon": 26.0, "alt": 36.0},
+        {"lat": 10.0, "lon": 20.0, "alt_m": 30.0},
+        {"lat": 16.0, "lon": 26.0, "alt_m": 36.0},
     ]
 
     route = component._build_route(waypoints)
@@ -26,9 +26,9 @@ def test_build_route_two_points_uses_sdk_generator(component):
 
 def test_build_route_three_points_uses_snake_generator(component):
     waypoints = [
-        {"lat": 55.750000, "lon": 37.610000, "alt": 60.0},
-        {"lat": 55.749000, "lon": 37.611000, "alt": 60.0},
-        {"lat": 55.752000, "lon": 37.616000, "alt": 80.0},
+        {"lat": 55.750000, "lon": 37.610000, "alt_m": 60.0},
+        {"lat": 55.749000, "lon": 37.611000, "alt_m": 60.0},
+        {"lat": 55.752000, "lon": 37.616000, "alt_m": 80.0},
     ]
 
     route = component._build_route(waypoints)
@@ -48,8 +48,8 @@ def test_handle_path_plan_saves_mission_and_returns_route(component, mock_bus):
             "mission_id": "m-plan",
             "task": {
                 "waypoints": [
-                    {"lat": 1.0, "lon": 2.0, "alt": 3.0},
-                    {"lat": 4.0, "lon": 5.0, "alt": 6.0},
+                    {"lat": 1.0, "lon": 2.0, "alt_m": 3.0},
+                    {"lat": 4.0, "lon": 5.0, "alt_m": 6.0},
                 ],
             },
         },
@@ -60,8 +60,8 @@ def test_handle_path_plan_saves_mission_and_returns_route(component, mock_bus):
 
     expected_waypoints = component._build_route(
         [
-            {"lat": 1.0, "lon": 2.0, "alt": 3.0},
-            {"lat": 4.0, "lon": 5.0, "alt": 6.0},
+            {"lat": 1.0, "lon": 2.0, "alt_m": 3.0},
+            {"lat": 4.0, "lon": 5.0, "alt_m": 6.0},
         ]
     )
     assert result["mission_id"] == "m-plan"

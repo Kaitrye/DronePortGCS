@@ -171,6 +171,8 @@ class DroneManagerComponent(BaseComponent):
             telemetry["longitude"] = nav_state.get("lon")
         if nav_state.get("alt_m") is not None:
             telemetry["altitude"] = nav_state.get("alt_m")
+        if nav_state.get("battery_pct") is not None:
+            telemetry["battery"] = nav_state.get("battery_pct")
 
         motors = payload.get("motors")
         if isinstance(motors, dict) and motors.get("battery") is not None:
@@ -251,7 +253,16 @@ class DroneManagerComponent(BaseComponent):
             },
             correlation_id=correlation_id,
         )
-        
+        start_payload = self._response_payload(start_response)
+        if not self._response_ok(start_response):
+            return {
+                "ok": False,
+                "mission_id": mission_id,
+                "drone_id": drone_id,
+                "error": (start_payload or {}).get("error", "mission_start_failed"),
+                "start_response": start_response,
+            }
+
         mission_update_message = {
             "action": MissionStoreActions.UPDATE_MISSION,
             "sender": self.component_id,
@@ -289,4 +300,9 @@ class DroneManagerComponent(BaseComponent):
         if drone_id:
             self._start_telemetry_polling(drone_id)
 
-        return None
+        return {
+            "ok": True,
+            "mission_id": mission_id,
+            "drone_id": drone_id,
+            "start_response": start_response,
+        }
