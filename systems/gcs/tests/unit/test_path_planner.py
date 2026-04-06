@@ -42,6 +42,14 @@ def test_build_route_rejects_invalid_waypoints(component):
     with pytest.raises(ValueError):
         component._build_route([{"lat": "bad", "lon": 2.0}])
 
+def test_build_route_rejects_unsupported_number_of_points(component):
+    waypoints = [
+        {"lat": 1.0, "lon": 2.0, "alt": 3.0},
+    ]  # валидная точка, но количество = 1
+
+    with pytest.raises(ValueError, match="either 2 or 3 route points"):
+        component._build_route(waypoints)
+
 
 def test_handle_path_plan_saves_mission_and_returns_route(component, mock_bus):
     message = {

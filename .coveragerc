@@ -1,0 +1,12 @@
+[run]
+source =
+    systems/gcs/src
+    systems/drone_port/src
+omit =
+    */__main__.py
+    */topics.py
+
+[report]
+omit =
+    */__main__.py
+    */topics.py

@@ -53,6 +53,7 @@ unit-test-with-coverage:
 		systems/drone_port/tests/unit/ \
 		systems/gcs/tests/unit/ \
 		--cov=systems/gcs/src \
+		--cov=systems/drone_port/src \
 		--cov-report=html:$(COVERAGE_HTML_DIR) \
 		--cov-report=term-missing \
 		-v
