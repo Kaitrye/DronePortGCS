@@ -1,11 +1,14 @@
 """
 PortManager — управление посадочными площадками.
 """
+import logging
 from typing import Dict, Any, List
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 from systems.drone_port.src.port_manager.topics import ComponentTopics, PortManagerActions
 from systems.drone_port.src.state_store.topics import StateStoreActions
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_payload(response: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -41,6 +44,7 @@ class PortManager(BaseComponent):
     def _handle_request_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
+        logger.info("[%s] request_landing drone_id=%s", self.component_id, drone_id)
 
         response = self.bus.request(
             ComponentTopics.STATE_STORE,
@@ -51,6 +55,7 @@ class PortManager(BaseComponent):
             timeout=3.0,
         )
         ports = _extract_payload(response).get("ports", [])
+        logger.info("[%s] request_landing ports=%r", self.component_id, ports)
 
         for port in ports:
             if not port.get("drone_id"):
@@ -70,6 +75,7 @@ class PortManager(BaseComponent):
                     "port_id": port["port_id"],
                 }
 
+        logger.warning("[%s] request_landing no free ports for drone_id=%s", self.component_id, drone_id)
         return {
             "error": "No free ports"
         }
@@ -78,6 +84,7 @@ class PortManager(BaseComponent):
         """Освободить порт."""
         payload = message.get("payload", {})
         port_id = payload.get("port_id")
+        logger.info("[%s] free_slot port_id=%s payload=%r", self.component_id, port_id, payload)
         
         self.bus.publish(
             ComponentTopics.STATE_STORE,
@@ -102,6 +109,7 @@ class PortManager(BaseComponent):
             },
             timeout=3.0,
         )
+        logger.info("[%s] get_port_status response=%r", self.component_id, response)
 
         return {
             "ports": _extract_payload(response).get("ports", []),

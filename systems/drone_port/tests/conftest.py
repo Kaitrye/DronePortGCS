@@ -117,13 +117,7 @@ def patch_drone_manager_external(monkeypatch):
     monkeypatch.setattr(
         drone_manager_module,
         "ExternalTopics",
-        SimpleNamespace(SITL="sitl"),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        drone_manager_module,
-        "SITLActions",
-        SimpleNamespace(STARTED_TAKEOFF="started_takeoff"),
+        SimpleNamespace(SITL_HOME="sitl"),
         raising=False,
     )
 

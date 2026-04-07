@@ -44,31 +44,28 @@ def bootstrap_gcs_stack() -> None:
     if not auto_bootstrap:
         return
 
-    print("[bootstrap] Starting stack: broker → GCS → DronePort → SITL stub → ORVD stub → AgroDron")
+    print("[bootstrap] Starting stack: broker → SITL → GCS → DronePort → AgroDron")
     try:
-        print("[bootstrap] Step 1/8: Preparing systems... ")
+        print("[bootstrap] Step 1/7: Preparing systems... ")
         demo.prepare_systems_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 2/8: Starting broker (shared)... ")
+        print("\n[bootstrap] Step 2/7: Starting broker (shared)... ")
         demo.broker_up_stream(on_output=lambda chunk: print(chunk, end=""))
         demo.wait_for_broker(timeout=90)
 
-        print("\n[bootstrap] Step 3/8: Starting GCS... ")
+        print("\n[bootstrap] Step 3/7: Starting SITL... ")
+        demo.sitl_up_stream(on_output=lambda chunk: print(chunk, end=""))
+
+        print("\n[bootstrap] Step 4/7: Starting GCS... ")
         demo.gcs_up_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 4/8: Starting DronePort (no broker)... ")
+        print("\n[bootstrap] Step 5/7: Starting DronePort (no broker)... ")
         demo.drone_port_up_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 5/8: Starting SITL stub... ")
-        demo.sitl_stub_up_stream(on_output=lambda chunk: print(chunk, end=""))
-
-        print("\n[bootstrap] Step 6/8: Starting ORVD stub... ")
-        demo.orvd_stub_up_stream(on_output=lambda chunk: print(chunk, end=""))
-
-        print("\n[bootstrap] Step 7/8: Starting AgroDron (no broker)... ")
+        print("\n[bootstrap] Step 6/7: Starting AgroDron (no broker)... ")
         demo.cyber_drons_up_stream(on_output=lambda chunk: print(chunk, end=""))
 
-        print("\n[bootstrap] Step 8/8: Connecting and waiting for readiness... ")
+        print("\n[bootstrap] Step 7/7: Connecting and waiting for readiness... ")
         demo.connect_bus()
         demo.wait_until_ready(timeout=180)
 

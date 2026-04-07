@@ -67,12 +67,19 @@ def test_handle_task_assign_publishes_upload_when_converter_returns_wpl(componen
         "payload": {"mission": {"wpl": "QGC WPL 110"}},
     }
 
-    component._handle_task_assign(
+    result = component._handle_task_assign(
         {
             "payload": {"mission_id": "m-assign", "drone_id": "dr-7"},
             "correlation_id": "corr-12",
         }
     )
+
+    assert result == {
+        "ok": True,
+        "mission_id": "m-assign",
+        "drone_id": "dr-7",
+        "forwarded_action": DroneManagerActions.MISSION_UPLOAD,
+    }
 
     mock_bus.request.assert_called_once_with(
         ComponentTopics.GCS_MISSION_CONVERTER,
@@ -103,17 +110,29 @@ def test_handle_task_assign_skips_publish_without_wpl(component, mock_bus):
 
     assert component._handle_task_assign(
         {"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}, "correlation_id": "corr-14"}
-    ) is None
+    ) == {
+        "ok": False,
+        "mission_id": "m-assign",
+        "drone_id": "dr-7",
+        "error": "mission_prepare_failed",
+    }
     mock_bus.publish.assert_not_called()
 
 
 def test_handle_task_start_publishes_start_command(component, mock_bus):
-    component._handle_task_start(
+    result = component._handle_task_start(
         {
             "payload": {"mission_id": "m-start", "drone_id": "dr-8"},
             "correlation_id": "corr-13",
         }
     )
+
+    assert result == {
+        "ok": True,
+        "mission_id": "m-start",
+        "drone_id": "dr-8",
+        "forwarded_action": DroneManagerActions.MISSION_START,
+    }
 
     mock_bus.publish.assert_called_once_with(
         ComponentTopics.GCS_DRONE_MANAGER,

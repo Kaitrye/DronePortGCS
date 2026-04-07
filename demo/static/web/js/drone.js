@@ -13,7 +13,13 @@
     trackingLonValue: document.getElementById("tracking_lon_value"),
     trackingAltValue: document.getElementById("tracking_alt_value"),
     trackingUpdatedValue: document.getElementById("tracking_updated_value"),
-    trackingHint: document.getElementById("tracking_hint")
+    trackingHint: document.getElementById("tracking_hint"),
+    sitlMessageCount: document.getElementById("sitl_message_count"),
+    sitlLastTopic: document.getElementById("sitl_last_topic"),
+    sitlLastDrone: document.getElementById("sitl_last_drone"),
+    sitlLastSeen: document.getElementById("sitl_last_seen"),
+    sitlHint: document.getElementById("sitl_hint"),
+    sitlMessagesBox: document.getElementById("sitl_messages_box")
   };
 
   const trackingMap = L.map("tracking_map", { zoomControl: true }).setView([55.751244, 37.618423], 14);
@@ -114,6 +120,65 @@
     }).addTo(trackingLayer);
   }
 
+  function summarizeSitlMessage(entry) {
+    const payload = entry?.message?.payload || entry?.message || {};
+    const droneId =
+      payload?.drone_id ||
+      payload?.data?.drone_id ||
+      payload?.payload?.drone_id ||
+      payload?.target?.drone_id ||
+      "-";
+    return {
+      topic: entry?.topic || "-",
+      droneId,
+      receivedAt: entry?.received_at || "-",
+      raw: entry?.message || {}
+    };
+  }
+
+  function updateSitlPanel(snapshot) {
+    const messages = Array.isArray(snapshot?.observed_sitl_messages) ? snapshot.observed_sitl_messages : [];
+    const lastEntry = messages[messages.length - 1];
+    const last = lastEntry ? summarizeSitlMessage(lastEntry) : null;
+
+    trackingState.sitlMessageCount.textContent = String(messages.length);
+    trackingState.sitlLastTopic.textContent = last?.topic || "-";
+    trackingState.sitlLastDrone.textContent = last?.droneId || "-";
+    trackingState.sitlLastSeen.textContent = last?.receivedAt || "-";
+
+    if (!messages.length) {
+      trackingState.sitlHint.textContent =
+        "Пока ничего не замечено. После отправки HOME, команд или telemetry-запросов панель обновится.";
+      trackingState.sitlMessagesBox.textContent = "Нет сообщений SITL";
+      return;
+    }
+
+    trackingState.sitlHint.textContent =
+      "Панель показывает последние сообщения по SITL-топикам, которые наблюдает demo-клиент.";
+    const lines = messages.slice(-6).reverse().map((entry) => {
+      const item = summarizeSitlMessage(entry);
+      return `[${item.receivedAt}] ${item.topic} drone=${item.droneId}\n${JSON.stringify(item.raw, null, 2)}`;
+    });
+    trackingState.sitlMessagesBox.textContent = lines.join("\n\n");
+  }
+
+  async function refreshSitlPanel(droneId) {
+    try {
+      const { response, data } = await app.requestJson("/api/action/snapshot", {
+        body: { drone_id: droneId || (trackingState.trackingDroneInput.value || "").trim() || "drone-demo-1" }
+      });
+
+      if (!response.ok || !data.ok) {
+        trackingState.sitlHint.textContent = data.error || "Не удалось получить snapshot SITL.";
+        return;
+      }
+
+      updateSitlPanel(data.result || {});
+    } catch (error) {
+      trackingState.sitlHint.textContent = String(error);
+    }
+  }
+
   function updatePortRefreshState(drone, droneId) {
     const position = drone?.last_position || {};
     const altitude = Number(position.altitude);
@@ -189,6 +254,7 @@
     if (!droneId) {
       trackingState.trackingHint.textContent = "Укажите ID дрона для отслеживания.";
       updateTrackingPanel(null);
+      updateSitlPanel({});
       return;
     }
 
@@ -215,6 +281,7 @@
       updateTrackingPanel(drone);
       updateTrackingMap(drone);
       updatePortRefreshState(drone, droneId);
+      refreshSitlPanel(droneId);
 
       if (options.center && drone.last_position) {
         trackingMap.setView(
@@ -225,6 +292,7 @@
     } catch (error) {
       trackingState.trackingHint.textContent = String(error);
       updateTrackingPanel(null);
+      refreshSitlPanel(droneId);
     }
   }
 

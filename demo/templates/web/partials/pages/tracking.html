@@ -56,6 +56,39 @@
           </div>
         </div>
       </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">SITL</div>
+          <div class="panel-meta">Последние сообщения, замеченные demo-клиентом</div>
+        </div>
+        <div class="panel-body">
+          <div class="status-row">
+            <div class="metric">
+              <div class="metric-label">Всего</div>
+              <div class="metric-value" id="sitl_message_count">0</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Последний топик</div>
+              <div class="metric-value" id="sitl_last_topic">-</div>
+            </div>
+          </div>
+          <div class="status-row" style="margin-top: 12px;">
+            <div class="metric">
+              <div class="metric-label">Последний дрон</div>
+              <div class="metric-value" id="sitl_last_drone">-</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Замечено</div>
+              <div class="metric-value" id="sitl_last_seen">-</div>
+            </div>
+          </div>
+          <div class="hint" id="sitl_hint" style="margin-top: 12px;">
+            После старта миссии здесь появятся HOME, команды и запросы телеметрии, которые доходят до SITL.
+          </div>
+          <div class="message-box" id="sitl_messages_box" style="margin-top: 12px;">Нет сообщений SITL</div>
+        </div>
+      </section>
     </aside>
 
     <section class="workspace">

@@ -1,4 +1,5 @@
 """Точка входа для PortManager."""
+import logging
 import os
 import signal
 import time
@@ -8,6 +9,7 @@ from systems.drone_port.src.port_manager.src.port_manager import PortManager
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     component_id = os.environ.get("COMPONENT_ID", "port_manager")
     bus = create_system_bus(client_id=component_id)
     component = PortManager(

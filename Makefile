@@ -1,4 +1,4 @@
-.PHONY: help init unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down sitl-stub-up sitl-stub-down sitl-stub-logs orvd-stub-up orvd-stub-down orvd-stub-logs web-demo
+.PHONY: help init unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down web-demo
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
 LOAD_ENV = set -a && . docker/.env && set +a
@@ -25,12 +25,6 @@ help:
 	@echo "make gcs-system-down   - Остановить GCS"
 	@echo "make drone-port-system-up   - Поднять DronePort"
 	@echo "make drone-port-system-down - Остановить DronePort"
-	@echo "make sitl-stub-up      - Собрать и запустить локальный SITL stub"
-	@echo "make sitl-stub-down    - Удалить контейнер SITL stub"
-	@echo "make sitl-stub-logs    - Логи SITL stub"
-	@echo "make orvd-stub-up      - Собрать и запустить локальный ORVD stub"
-	@echo "make orvd-stub-down    - Удалить контейнер ORVD stub"
-	@echo "make orvd-stub-logs    - Логи ORVD stub"
 	@echo "make web-demo         - Запустить веб-сервер demo через pipenv"
 
 init:
@@ -79,51 +73,6 @@ drone-port-system-up:
 drone-port-system-down:
 	-@set -a && . systems/drone_port/.generated/.env && set +a && \
 		$(DRONE_PORT_COMPOSE) rm -sf redis state_store port_manager drone_registry charging_manager drone_manager orchestrator 2>/dev/null
-
-sitl-stub-up:
-	@docker rm -f droneportgcs-sitl-stub >/dev/null 2>&1 || true
-	@docker build -f components/sitl_stub/docker/Dockerfile -t droneportgcs-sitl-stub:latest .
-	@$(LOAD_ENV) && SITL_TOPIC=$$(grep '^SITL_TOPIC=' external/cyber_drons/agrodron/.generated/.env | cut -d= -f2-) && \
-		SITL_COMMANDS_TOPIC=$$(grep '^SITL_COMMANDS_TOPIC=' external/cyber_drons/agrodron/.generated/.env | cut -d= -f2-) && \
-		SITL_DRONE_ID=$$(grep '^SITL_DRONE_ID=' external/cyber_drons/agrodron/.generated/.env | cut -d= -f2-) && \
-		docker run -d --name droneportgcs-sitl-stub --network $${DOCKER_NETWORK:-drones_net} \
-		-e BROKER_TYPE=$${BROKER_TYPE:-mqtt} \
-		-e MQTT_BROKER=mosquitto \
-		-e MQTT_PORT=$${MQTT_PORT:-1883} \
-		-e BROKER_USER=$${ADMIN_USER:-admin} \
-		-e BROKER_PASSWORD=$${ADMIN_PASSWORD:-admin_secret_123} \
-		-e COMPONENT_ID=sitl_stub \
-		-e SYSTEM_NAME=Agrodron \
-		-e INSTANCE_ID=Agrodron001 \
-		-e SITL_TOPIC=$${SITL_TOPIC:-v1.SITL.SITL001.main} \
-		-e SITL_COMMANDS_TOPIC=$${SITL_COMMANDS_TOPIC:-$${SITL_TOPIC:-v1.SITL.SITL001.main}} \
-		-e SITL_DRONE_ID=$${SITL_DRONE_ID:-drone_001} \
-		droneportgcs-sitl-stub:latest
-
-sitl-stub-down:
-	-@docker rm -f droneportgcs-sitl-stub 2>/dev/null
-
-sitl-stub-logs:
-	@docker logs -f droneportgcs-sitl-stub
-
-orvd-stub-up:
-	@docker rm -f droneportgcs-orvd-stub >/dev/null 2>&1 || true
-	@docker build -f components/orvd_stub/docker/Dockerfile -t droneportgcs-orvd-stub:latest .
-	@$(LOAD_ENV) && docker run -d --name droneportgcs-orvd-stub --network $${DOCKER_NETWORK:-drones_net} \
-		-e BROKER_TYPE=$${BROKER_TYPE:-mqtt} \
-		-e MQTT_BROKER=mosquitto \
-		-e MQTT_PORT=$${MQTT_PORT:-1883} \
-		-e BROKER_USER=$${ADMIN_USER:-admin} \
-		-e BROKER_PASSWORD=$${ADMIN_PASSWORD:-admin_secret_123} \
-		-e ORVD_TOPIC=v1.ORVD.ORVD001.main \
-		-e COMPONENT_ID=orvd_stub \
-		droneportgcs-orvd-stub:latest
-
-orvd-stub-down:
-	-@docker rm -f droneportgcs-orvd-stub 2>/dev/null
-
-orvd-stub-logs:
-	@docker logs -f droneportgcs-orvd-stub
 
 web-demo:
 	@PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python demo/web_demo.py

@@ -1,1 +1,0 @@
-"""ORVD stub source package."""

@@ -1,4 +1,5 @@
 from systems.drone_port.src.drone_manager.src.drone_manager import DroneManager
+from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.topics import DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import PortManagerActions
@@ -25,7 +26,7 @@ def test_landing_registers_drone_after_port_assignment(mock_bus):
     )
 
 
-def test_takeoff_publishes_port_release_and_sitl_start(mock_bus, patch_drone_manager_external):
+def test_takeoff_publishes_port_release_and_sitl_home(mock_bus, patch_drone_manager_external):
     manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
 
     def request_side_effect(topic, message, timeout=None):
@@ -68,16 +69,13 @@ def test_takeoff_publishes_port_release_and_sitl_start(mock_bus, patch_drone_man
     assert mock_bus.publish.call_args_list[1].args == (
         "sitl",
         {
-            "action": "started_takeoff",
-            "payload": {
-                "drone_id": "DR-1",
-                "port_id": "P-01",
-                "port_coordinates": {"lat": "55.751000", "lon": "37.617000"},
-                "battery": 90.0,
-            },
-            "sender": "drone_manager",
+            "drone_id": "DR-1",
+            "home_lat": 55.751,
+            "home_lon": 37.617,
+            "home_alt": 0.0,
         },
     )
+    assert len(mock_bus.publish.call_args_list) == 2
 
 
 def test_takeoff_returns_domain_error_when_battery_is_unknown(mock_bus, patch_drone_manager_external):
@@ -129,7 +127,75 @@ def test_external_landing_uses_sender_topic_as_drone_id(mock_bus):
     assert mock_bus.publish.call_args.args[1]["payload"]["drone_id"] == "Agrodron001"
 
 
-def test_request_departure_reuses_takeoff_handler(mock_bus, patch_drone_manager_external):
+def test_landing_with_partial_battery_starts_charging(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+    mock_bus.request.return_value = {"success": True, "payload": {"port_id": "P-03"}}
+
+    result = manager._handle_landing(
+        {"payload": {"drone_id": "DR-9", "model": "QuadroX", "battery": 72.5}}
+    )
+
+    assert result == {"approved": True, "port_id": "P-03", "drone_id": "DR-9", "from": "drone_manager"}
+    assert mock_bus.publish.call_args_list[0].args == (
+        RegistryTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.REGISTER_DRONE,
+            "payload": {
+                "drone_id": "DR-9",
+                "model": "QuadroX",
+                "port_id": "P-03",
+            },
+            "sender": "drone_manager",
+        },
+    )
+    assert mock_bus.publish.call_args_list[1].args == (
+        RegistryTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.UPDATE_BATTERY,
+            "payload": {
+                "drone_id": "DR-9",
+                "battery": 72.5,
+            },
+            "sender": "drone_manager",
+        },
+    )
+    assert mock_bus.publish.call_args_list[2].args == (
+        ChargingTopics.CHARGING_MANAGER,
+        {
+            "action": ChargingManagerActions.START_CHARGING,
+            "payload": {
+                "drone_id": "DR-9",
+                "battery": 72.5,
+            },
+            "sender": "drone_manager",
+        },
+    )
+
+
+def test_landing_with_full_battery_does_not_start_charging(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+    mock_bus.request.return_value = {"success": True, "payload": {"port_id": "P-04"}}
+
+    manager._handle_landing(
+        {"payload": {"drone_id": "DR-10", "model": "QuadroX", "battery": 100}}
+    )
+
+    assert mock_bus.publish.call_args_list[0].args[0] == RegistryTopics.DRONE_REGISTRY
+    assert mock_bus.publish.call_args_list[1].args == (
+        RegistryTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.UPDATE_BATTERY,
+            "payload": {
+                "drone_id": "DR-10",
+                "battery": 100.0,
+            },
+            "sender": "drone_manager",
+        },
+    )
+    assert len(mock_bus.publish.call_args_list) == 2
+
+
+def test_request_takeoff_reuses_takeoff_handler(mock_bus, patch_drone_manager_external):
     manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
 
     def request_side_effect(topic, message, timeout=None):
@@ -154,7 +220,7 @@ def test_request_departure_reuses_takeoff_handler(mock_bus, patch_drone_manager_
 
     mock_bus.request.side_effect = request_side_effect
 
-    result = manager._handlers[DroneManagerActions.REQUEST_DEPARTURE](
+    result = manager._handlers[DroneManagerActions.REQUEST_TAKEOFF](
         {
             "sender": "v1.Agrodron.Agrodron001.security_monitor",
             "payload": {"mission_id": "mission-001"},

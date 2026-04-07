@@ -342,13 +342,16 @@
     });
   });
 
-  document.getElementById("refresh_status_btn").addEventListener("click", (event) => {
-    callApi("ps", {
-      method: "GET",
-      label: "Обновить состояние",
-      button: event.currentTarget
+  const refreshStatusButton = document.getElementById("refresh_status_btn");
+  if (refreshStatusButton) {
+    refreshStatusButton.addEventListener("click", (event) => {
+      callApi("ps", {
+        method: "GET",
+        label: "Обновить состояние",
+        button: event.currentTarget
+      });
     });
-  });
+  }
 
   map.on("click", (event) => {
     if (missionFlowStep !== "submit") {

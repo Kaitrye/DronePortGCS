@@ -59,7 +59,7 @@ deactivate DM
 ' === SCENARIO 2: TAKEOFF ===
 == 🛫 Сценарий 2: Взлёт дрона ==
 
-Drone -> DM: request_departure {mission_id: "mission-001"}
+Drone -> DM: request_takeoff {mission_id: "mission-001"}
 activate DM
 DM -> DR: get_drone {drone_id: "D-001"} #palegreen
 activate DR

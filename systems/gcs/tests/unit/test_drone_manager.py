@@ -39,6 +39,7 @@ def test_handle_mission_upload(component, mock_bus):
                 },
                 "data": {
                     "mission_id": "m-upload",
+                    "drone_id": "dr-1",
                     "wpl_content": "QGC WPL 110",
                 },
             },

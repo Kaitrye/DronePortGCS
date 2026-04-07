@@ -47,21 +47,48 @@ def test_simulate_charging_publishes_updates_until_full(mock_bus, monkeypatch):
     manager._simulate_charging("DR-2", 85.0)
 
     published = [call.args for call in mock_bus.publish.call_args_list]
-    assert published == [
-        (
-            ComponentTopics.DRONE_REGISTRY,
-            {
-                "action": DroneRegistryActions.UPDATE_BATTERY,
-                "payload": {"drone_id": "DR-2", "battery": 95.0},
-                "sender": "charging_manager",
-            },
-        ),
-        (
-            ComponentTopics.DRONE_REGISTRY,
-            {
-                "action": DroneRegistryActions.UPDATE_BATTERY,
-                "payload": {"drone_id": "DR-2", "battery": 100.0},
-                "sender": "charging_manager",
-            },
-        ),
-    ]
+    assert published[0] == (
+        ComponentTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.UPDATE_BATTERY,
+            "payload": {"drone_id": "DR-2", "battery": 86.0},
+            "sender": "charging_manager",
+        },
+    )
+    assert published[-1] == (
+        ComponentTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.UPDATE_BATTERY,
+            "payload": {"drone_id": "DR-2", "battery": 100.0},
+            "sender": "charging_manager",
+        },
+    )
+    assert len(published) == 15
+
+
+def test_simulate_charging_skips_fractional_db_updates(mock_bus, monkeypatch):
+    manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
+    manager._charging_update_interval_s = 0.2
+    manager._charging_rate_pct_per_s = 2.0
+    monkeypatch.setattr(charging_manager_module.time, "sleep", lambda *_args, **_kwargs: None)
+
+    manager._simulate_charging("DR-3", 85.2)
+
+    published = [call.args for call in mock_bus.publish.call_args_list]
+    assert published[0] == (
+        ComponentTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.UPDATE_BATTERY,
+            "payload": {"drone_id": "DR-3", "battery": 86.0},
+            "sender": "charging_manager",
+        },
+    )
+    assert published[-1] == (
+        ComponentTopics.DRONE_REGISTRY,
+        {
+            "action": DroneRegistryActions.UPDATE_BATTERY,
+            "payload": {"drone_id": "DR-3", "battery": 100.0},
+            "sender": "charging_manager",
+        },
+    )
+    assert len(published) == 15

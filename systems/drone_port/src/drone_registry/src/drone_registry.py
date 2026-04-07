@@ -2,14 +2,17 @@
 DroneRegistry — реестр дронов в Redis.
 """
 import datetime
+import logging
 from typing import Dict, Any
 import redis
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 
+logger = logging.getLogger(__name__)
 
-DEFAULT_DEMO_DRONE_ID = "Agrodron001"
+
+DEFAULT_DEMO_DRONE_ID = "drone_001"
 DEFAULT_DEMO_DRONE_MODEL = "AgroDron"
 DEFAULT_DEMO_DRONE_PORT_ID = "P-01"
 DEFAULT_DEMO_DRONE_BATTERY = "100"
@@ -75,6 +78,7 @@ class DroneRegistry(BaseComponent):
         payload = message.get("payload")
         drone_id = payload.get("drone_id")
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        logger.info("[%s] register_drone drone_id=%s payload=%r", self.component_id, drone_id, payload)
 
         self.redis.hset(
             f"drone:{drone_id}",
@@ -97,6 +101,7 @@ class DroneRegistry(BaseComponent):
             drone = self.redis.hgetall(key)
             if drone and drone.get("status") == "ready":
                 drones.append(drone)
+        logger.info("[%s] get_available_drones count=%s", self.component_id, len(drones))
 
         return {
             "drones": drones,
@@ -107,6 +112,7 @@ class DroneRegistry(BaseComponent):
         payload = message.get("payload")
         drone_id = payload.get("drone_id")
         drone = self.redis.hgetall(f"drone:{drone_id}")
+        logger.info("[%s] get_drone drone_id=%s found=%s", self.component_id, drone_id, bool(drone))
 
         if not drone:
             return {
@@ -123,6 +129,7 @@ class DroneRegistry(BaseComponent):
     def _handle_delete_drone(self, message: Dict[str, Any]) -> None:
         payload = message.get("payload")
         drone_id = payload.get("drone_id")
+        logger.info("[%s] delete_drone drone_id=%s", self.component_id, drone_id)
 
         self.redis.delete(f"drone:{drone_id}")
         return None
@@ -133,6 +140,7 @@ class DroneRegistry(BaseComponent):
         """
         payload = message.get("payload")
         drone_id = payload.get("drone_id")
+        logger.info("[%s] charging_started drone_id=%s", self.component_id, drone_id)
 
         self.redis.hset(
             f"drone:{drone_id}",
@@ -150,6 +158,7 @@ class DroneRegistry(BaseComponent):
         payload = message.get("payload")
         drone_id = payload.get("drone_id")
         battery = payload.get("battery")
+        logger.info("[%s] update_battery drone_id=%s battery=%s", self.component_id, drone_id, battery)
 
         self.redis.hset(
             f"drone:{drone_id}",

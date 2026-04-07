@@ -6,7 +6,7 @@ title Дронопорт — C2 Containers
 
 System_Ext(operator_system, "Эксплуатант", "Внешняя система, отслеживающая статусы дронов")
 System_Ext(drone, "Дрон", "Физический борт")
-System_Ext(sitl, "SITL", "Внешняя среда симуляции, получающая данные о начальных координатах дронов")
+System_Ext(sitl, "SITL", "Внешняя среда симуляции, получающая HOME-координаты дрона")
 
 System_Boundary(drone_port, "Дронопорт") {
   Container(orchestrator, "Orchestrator", "Python service", "Внешняя точка входа для Эксплуатанта")
@@ -22,9 +22,8 @@ System_Boundary(drone_port, "Дронопорт") {
 Rel(operator_system, orchestrator, "get_available_drones")
 Rel(orchestrator, drone_registry, "get_available_drones", "request")
 
-Rel(drone, drone_manager, "request_landing / request_departure / request_charging")
-Rel(drone_manager, drone, "land_at_port_id / takeoff_allowed")
-Rel(drone_manager, sitl, "started_takeoff", "publish")
+Rel(drone, drone_manager, "request_landing / request_takeoff")
+Rel(drone_manager, sitl, "sitl-drone-home (HOME)", "publish")
 
 Rel(drone_manager, port_manager, "request_landing / get_port_status", "request")
 Rel(drone_manager, port_manager, "free_slot", "publish")
@@ -44,7 +43,7 @@ note right of drone_manager
   - при посадке резервирует слот через PortManager
   - после успешной посадки регистрирует дрон в DroneRegistry
   - при взлете проверяет порт и состояние дрона
-  - после успешного взлета освобождает слот и публикует started_takeoff в SITL
+  - после успешного взлета освобождает слот и публикует HOME-координаты в SITL
   - при зарядке запускает ChargingManager
 end note
 

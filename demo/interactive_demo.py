@@ -53,10 +53,17 @@ DRONE_PORT_GENERATED_DIR = DRONE_PORT_DIR / ".generated"
 CYBER_DRONS_DIR = ROOT / "external" / "cyber_drons"
 AGRODRON_DIR = CYBER_DRONS_DIR / "agrodron"
 AGRODRON_GENERATED_DIR = AGRODRON_DIR / ".generated"
-SITL_STUB_IMAGE = "droneportgcs-sitl-stub:latest"
-SITL_STUB_CONTAINER = "droneportgcs-sitl-stub"
-ORVD_STUB_IMAGE = "droneportgcs-orvd-stub:latest"
-ORVD_STUB_CONTAINER = "droneportgcs-orvd-stub"
+SITL_MODULE_DIR = ROOT / "external" / "sitl_module"
+SITL_COMPOSE_FILE = SITL_MODULE_DIR / "docker-compose.yaml"
+SITL_OBSERVED_TOPICS = [
+    "sitl",
+    "sitl-drone-home",
+    "sitl.commands",
+    "sitl.telemetry.request",
+    "sitl.telemetry.response",
+    "sitl.verified-home",
+    "sitl.verified-commands",
+]
 AGRODRON_COMPONENT_SERVICES = [
     "security_monitor",
     "journal",
@@ -105,7 +112,13 @@ class DockerInteractiveDemo:
         self.observed_drone_messages: List[Dict[str, Any]] = []
         self.observed_sitl_messages: List[Dict[str, Any]] = []
 
-    def _run(self, command: List[str], cwd: Path | None = None, timeout: int = 1800) -> str:
+    def _run(
+        self,
+        command: List[str],
+        cwd: Path | None = None,
+        timeout: int = 1800,
+        env: Optional[Dict[str, str]] = None,
+    ) -> str:
         result = subprocess.run(
             command,
             cwd=str(cwd or ROOT),
@@ -113,6 +126,7 @@ class DockerInteractiveDemo:
             text=True,
             timeout=timeout,
             check=True,
+            env=env,
         )
         return (result.stdout or "") + (result.stderr or "")
 
@@ -122,6 +136,7 @@ class DockerInteractiveDemo:
         cwd: Path | None = None,
         timeout: int = 1800,
         on_output: Optional[Callable[[str], None]] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> str:
         process = subprocess.Popen(
             command,
@@ -130,6 +145,7 @@ class DockerInteractiveDemo:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env,
         )
 
         lines: List[str] = []
@@ -156,25 +172,13 @@ class DockerInteractiveDemo:
             raise subprocess.CalledProcessError(return_code, command, output=output)
         return output
 
-    def _compose(self, compose_file: Path, env_file: Path, args: List[str], cwd: Path | None = None) -> str:
-        command = [
-            "docker",
-            "compose",
-            "-f",
-            str(compose_file),
-            "--env-file",
-            str(env_file),
-            *args,
-        ]
-        return self._run(command, cwd=cwd or ROOT)
-
-    def _compose_stream(
+    def _compose(
         self,
         compose_file: Path,
         env_file: Path,
         args: List[str],
         cwd: Path | None = None,
-        on_output: Optional[Callable[[str], None]] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> str:
         command = [
             "docker",
@@ -185,7 +189,27 @@ class DockerInteractiveDemo:
             str(env_file),
             *args,
         ]
-        return self._run_stream(command, cwd=cwd or ROOT, on_output=on_output)
+        return self._run(command, cwd=cwd or ROOT, env=env)
+
+    def _compose_stream(
+        self,
+        compose_file: Path,
+        env_file: Path,
+        args: List[str],
+        cwd: Path | None = None,
+        on_output: Optional[Callable[[str], None]] = None,
+        env: Optional[Dict[str, str]] = None,
+    ) -> str:
+        command = [
+            "docker",
+            "compose",
+            "-f",
+            str(compose_file),
+            "--env-file",
+            str(env_file),
+            *args,
+        ]
+        return self._run_stream(command, cwd=cwd or ROOT, on_output=on_output, env=env)
 
     def _docker(self, args: List[str], cwd: Path | None = None) -> str:
         return self._run(["docker", *args], cwd=cwd or ROOT)
@@ -312,6 +336,65 @@ class DockerInteractiveDemo:
             except subprocess.CalledProcessError as exc:
                 output.append((exc.stdout or "") + (exc.stderr or ""))
         return "\n".join(output)
+
+    def _sitl_env(self) -> Dict[str, str]:
+        env = os.environ.copy()
+        env.update(parse_env_file(DOCKER_ENV))
+        agrodron_env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
+        env["DOCKER_NETWORK"] = env.get("DOCKER_NETWORK", "drones_net")
+        env["BROKER_BACKEND"] = "mqtt"
+        env["MQTT_HOST"] = "mosquitto"
+        env["MQTT_PORT"] = env.get("MQTT_PORT", "1883")
+        env["MQTT_USERNAME"] = env.get("ADMIN_USER", "admin")
+        env["MQTT_PASSWORD"] = env.get("ADMIN_PASSWORD", "admin_secret_123")
+        env["MQTT_QOS"] = "1"
+        env["INPUT_TOPICS"] = ",".join(
+            [
+                agrodron_env.get("SITL_COMMANDS_TOPIC", "sitl.commands"),
+                agrodron_env.get("SITL_HOME_TOPIC", "sitl-drone-home"),
+            ]
+        )
+        env["COMMAND_TOPIC"] = agrodron_env.get("SITL_COMMANDS_TOPIC", "sitl.commands")
+        env["HOME_TOPIC"] = agrodron_env.get("SITL_HOME_TOPIC", "sitl-drone-home")
+        env["POSITION_REQUEST_TOPIC"] = agrodron_env.get(
+            "SITL_TELEMETRY_REQUEST_TOPIC",
+            "sitl.telemetry.request",
+        )
+        env["POSITION_RESPONSE_TOPIC"] = "sitl.telemetry.response"
+        return env
+
+    def sitl_up(self) -> str:
+        self.ensure_root_env()
+        return self._compose(
+            SITL_COMPOSE_FILE,
+            DOCKER_ENV,
+            ["up", "-d", "--build"],
+            cwd=SITL_MODULE_DIR,
+            env=self._sitl_env(),
+        )
+
+    def sitl_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
+        self.ensure_root_env()
+        return self._compose_stream(
+            SITL_COMPOSE_FILE,
+            DOCKER_ENV,
+            ["up", "-d", "--build"],
+            cwd=SITL_MODULE_DIR,
+            on_output=on_output,
+            env=self._sitl_env(),
+        )
+
+    def sitl_down(self) -> str:
+        try:
+            return self._compose(
+                SITL_COMPOSE_FILE,
+                DOCKER_ENV,
+                ["down", "--remove-orphans"],
+                cwd=SITL_MODULE_DIR,
+                env=self._sitl_env(),
+            )
+        except subprocess.CalledProcessError as exc:
+            return (exc.stdout or "") + (exc.stderr or "")
 
     def gcs_up(self) -> str:
         env = parse_env_file(GCS_GENERATED_DIR / ".env")
@@ -541,292 +624,13 @@ class DockerInteractiveDemo:
                 output.append((exc.stdout or "") + (exc.stderr or ""))
         return "\n".join(output)
 
-    def sitl_stub_up(self) -> str:
-        env = parse_env_file(DOCKER_ENV)
-        agrodron_env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
-        network = env.get("DOCKER_NETWORK", "drones_net")
-        broker_type = env.get("BROKER_TYPE", "mqtt").lower()
-        port = env.get("MQTT_PORT", "1883")
-        user = env.get("ADMIN_USER", "admin")
-        password = env.get("ADMIN_PASSWORD", "admin_secret_123")
-        sitl_topic = agrodron_env.get("SITL_TOPIC", "v1.SITL.SITL001.main")
-        sitl_commands_topic = agrodron_env.get("SITL_COMMANDS_TOPIC", sitl_topic)
-        sitl_drone_id = agrodron_env.get("SITL_DRONE_ID", "drone_001")
-
-        output = []
-        try:
-            output.append(self._docker(["rm", "-f", SITL_STUB_CONTAINER]))
-        except subprocess.CalledProcessError as exc:
-            output.append((exc.stdout or "") + (exc.stderr or ""))
-
-        output.append(
-            self._docker(
-                [
-                    "build",
-                    "-f",
-                    str(ROOT / "components" / "sitl_stub" / "docker" / "Dockerfile"),
-                    "-t",
-                    SITL_STUB_IMAGE,
-                    ".",
-                ]
-            )
-        )
-        output.append(
-            self._docker(
-                [
-                    "run",
-                    "-d",
-                    "--name",
-                    SITL_STUB_CONTAINER,
-                    "--network",
-                    network,
-                    "-e",
-                    f"BROKER_TYPE={broker_type}",
-                    "-e",
-                    "MQTT_BROKER=mosquitto",
-                    "-e",
-                    f"MQTT_PORT={port}",
-                    "-e",
-                    f"BROKER_USER={user}",
-                    "-e",
-                    f"BROKER_PASSWORD={password}",
-                    "-e",
-                    "COMPONENT_ID=sitl_stub",
-                    "-e",
-                    "SYSTEM_NAME=Agrodron",
-                    "-e",
-                    "INSTANCE_ID=Agrodron001",
-                    "-e",
-                    f"SITL_TOPIC={sitl_topic}",
-                    "-e",
-                    f"SITL_COMMANDS_TOPIC={sitl_commands_topic}",
-                    "-e",
-                    f"SITL_DRONE_ID={sitl_drone_id}",
-                    SITL_STUB_IMAGE,
-                ]
-            )
-        )
-        return "\n".join(part for part in output if part)
-
-    def sitl_stub_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
-        env = parse_env_file(DOCKER_ENV)
-        agrodron_env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
-        network = env.get("DOCKER_NETWORK", "drones_net")
-        broker_type = env.get("BROKER_TYPE", "mqtt").lower()
-        port = env.get("MQTT_PORT", "1883")
-        user = env.get("ADMIN_USER", "admin")
-        password = env.get("ADMIN_PASSWORD", "admin_secret_123")
-        sitl_topic = agrodron_env.get("SITL_TOPIC", "v1.SITL.SITL001.main")
-        sitl_commands_topic = agrodron_env.get("SITL_COMMANDS_TOPIC", sitl_topic)
-        sitl_drone_id = agrodron_env.get("SITL_DRONE_ID", "drone_001")
-        output: List[str] = []
-
-        if on_output:
-            on_output("[sitl_stub] Cleaning up existing container...\n")
-        try:
-            output.append(self._docker_stream(["rm", "-f", SITL_STUB_CONTAINER], on_output=on_output))
-        except subprocess.CalledProcessError as exc:
-            output.append((exc.stdout or "") + (exc.stderr or ""))
-
-        if on_output:
-            on_output("[sitl_stub] Building image...\n")
-        output.append(
-            self._docker_stream(
-                [
-                    "build",
-                    "-f",
-                    str(ROOT / "components" / "sitl_stub" / "docker" / "Dockerfile"),
-                    "-t",
-                    SITL_STUB_IMAGE,
-                    ".",
-                ],
-                on_output=on_output,
-            )
-        )
-
-        if on_output:
-            on_output("[sitl_stub] Starting container...\n")
-        output.append(
-            self._docker_stream(
-                [
-                    "run",
-                    "-d",
-                    "--name",
-                    SITL_STUB_CONTAINER,
-                    "--network",
-                    network,
-                    "-e",
-                    f"BROKER_TYPE={broker_type}",
-                    "-e",
-                    "MQTT_BROKER=mosquitto",
-                    "-e",
-                    f"MQTT_PORT={port}",
-                    "-e",
-                    f"BROKER_USER={user}",
-                    "-e",
-                    f"BROKER_PASSWORD={password}",
-                    "-e",
-                    "COMPONENT_ID=sitl_stub",
-                    "-e",
-                    "SYSTEM_NAME=Agrodron",
-                    "-e",
-                    "INSTANCE_ID=Agrodron001",
-                    "-e",
-                    f"SITL_TOPIC={sitl_topic}",
-                    "-e",
-                    f"SITL_COMMANDS_TOPIC={sitl_commands_topic}",
-                    "-e",
-                    f"SITL_DRONE_ID={sitl_drone_id}",
-                    SITL_STUB_IMAGE,
-                ],
-                on_output=on_output,
-            )
-        )
-        return "\n".join(part for part in output if part)
-
-    def sitl_stub_down(self) -> str:
-        try:
-            return self._docker(["rm", "-f", SITL_STUB_CONTAINER])
-        except subprocess.CalledProcessError as exc:
-            return (exc.stdout or "") + (exc.stderr or "")
-
-    def orvd_stub_up(self) -> str:
-        env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
-        root_env = parse_env_file(DOCKER_ENV)
-        network = root_env.get("DOCKER_NETWORK", "drones_net")
-        broker_type = root_env.get("BROKER_TYPE", "mqtt").lower()
-        port = root_env.get("MQTT_PORT", "1883")
-        user = root_env.get("ADMIN_USER", "admin")
-        password = root_env.get("ADMIN_PASSWORD", "admin_secret_123")
-        orvd_topic = env.get("ORVD_TOPIC", "v1.ORVD.ORVD001.main")
-
-        output = []
-        try:
-            output.append(self._docker(["rm", "-f", ORVD_STUB_CONTAINER]))
-        except subprocess.CalledProcessError as exc:
-            output.append((exc.stdout or "") + (exc.stderr or ""))
-
-        output.append(
-            self._docker(
-                [
-                    "build",
-                    "-f",
-                    str(ROOT / "components" / "orvd_stub" / "docker" / "Dockerfile"),
-                    "-t",
-                    ORVD_STUB_IMAGE,
-                    ".",
-                ]
-            )
-        )
-        output.append(
-            self._docker(
-                [
-                    "run",
-                    "-d",
-                    "--name",
-                    ORVD_STUB_CONTAINER,
-                    "--network",
-                    network,
-                    "-e",
-                    f"BROKER_TYPE={broker_type}",
-                    "-e",
-                    "MQTT_BROKER=mosquitto",
-                    "-e",
-                    f"MQTT_PORT={port}",
-                    "-e",
-                    f"BROKER_USER={user}",
-                    "-e",
-                    f"BROKER_PASSWORD={password}",
-                    "-e",
-                    f"ORVD_TOPIC={orvd_topic}",
-                    "-e",
-                    "COMPONENT_ID=orvd_stub",
-                    ORVD_STUB_IMAGE,
-                ]
-            )
-        )
-        return "\n".join(part for part in output if part)
-
-    def orvd_stub_up_stream(self, on_output: Optional[Callable[[str], None]] = None) -> str:
-        env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
-        root_env = parse_env_file(DOCKER_ENV)
-        network = root_env.get("DOCKER_NETWORK", "drones_net")
-        broker_type = root_env.get("BROKER_TYPE", "mqtt").lower()
-        port = root_env.get("MQTT_PORT", "1883")
-        user = root_env.get("ADMIN_USER", "admin")
-        password = root_env.get("ADMIN_PASSWORD", "admin_secret_123")
-        orvd_topic = env.get("ORVD_TOPIC", "v1.ORVD.ORVD001.main")
-        output: List[str] = []
-
-        if on_output:
-            on_output("[orvd_stub] Cleaning up existing container...\n")
-        try:
-            output.append(self._docker_stream(["rm", "-f", ORVD_STUB_CONTAINER], on_output=on_output))
-        except subprocess.CalledProcessError as exc:
-            output.append((exc.stdout or "") + (exc.stderr or ""))
-
-        if on_output:
-            on_output("[orvd_stub] Building image...\n")
-        output.append(
-            self._docker_stream(
-                [
-                    "build",
-                    "-f",
-                    str(ROOT / "components" / "orvd_stub" / "docker" / "Dockerfile"),
-                    "-t",
-                    ORVD_STUB_IMAGE,
-                    ".",
-                ],
-                on_output=on_output,
-            )
-        )
-
-        if on_output:
-            on_output("[orvd_stub] Starting container...\n")
-        output.append(
-            self._docker_stream(
-                [
-                    "run",
-                    "-d",
-                    "--name",
-                    ORVD_STUB_CONTAINER,
-                    "--network",
-                    network,
-                    "-e",
-                    f"BROKER_TYPE={broker_type}",
-                    "-e",
-                    "MQTT_BROKER=mosquitto",
-                    "-e",
-                    f"MQTT_PORT={port}",
-                    "-e",
-                    f"BROKER_USER={user}",
-                    "-e",
-                    f"BROKER_PASSWORD={password}",
-                    "-e",
-                    f"ORVD_TOPIC={orvd_topic}",
-                    "-e",
-                    "COMPONENT_ID=orvd_stub",
-                    ORVD_STUB_IMAGE,
-                ],
-                on_output=on_output,
-            )
-        )
-        return "\n".join(part for part in output if part)
-
-    def orvd_stub_down(self) -> str:
-        try:
-            return self._docker(["rm", "-f", ORVD_STUB_CONTAINER])
-        except subprocess.CalledProcessError as exc:
-            return (exc.stdout or "") + (exc.stderr or "")
-
     def up_all(self) -> str:
         output = [
             self.prepare_systems(),
             self.broker_up(),
+            self.sitl_up(),
             self.gcs_up(),
             self.drone_port_up(),
-            self.sitl_stub_up(),
-            self.orvd_stub_up(),
             self.cyber_drons_up(),
         ]
         self.wait_for_broker()
@@ -848,14 +652,12 @@ class DockerInteractiveDemo:
         output.append(self.prepare_systems_stream(on_output=on_output))
         emit("==> Starting broker")
         output.append(self.broker_up_stream(on_output=on_output))
+        emit("==> Starting SITL")
+        output.append(self.sitl_up_stream(on_output=on_output))
         emit("==> Starting GCS")
         output.append(self.gcs_up_stream(on_output=on_output))
         emit("==> Starting DronePort")
         output.append(self.drone_port_up_stream(on_output=on_output))
-        emit("==> Starting SITL stub")
-        output.append(self.sitl_stub_up_stream(on_output=on_output))
-        emit("==> Starting ORVD stub")
-        output.append(self.orvd_stub_up_stream(on_output=on_output))
         emit("==> Starting AgroDron")
         output.append(self.cyber_drons_up_stream(on_output=on_output))
         emit("==> Waiting for broker socket")
@@ -870,10 +672,9 @@ class DockerInteractiveDemo:
         output = [
             self.disconnect_bus(),
             self.cyber_drons_down(),
-            self.sitl_stub_down(),
-            self.orvd_stub_down(),
             self.drone_port_down(),
             self.gcs_down(),
+            self.sitl_down(),
             self.broker_down(),
         ]
         return "\n".join(part for part in output if part)
@@ -927,6 +728,8 @@ class DockerInteractiveDemo:
     def ps(self) -> str:
         output = ["[broker]"]
         output.append(self._compose(DOCKER_DIR / "docker-compose.yml", DOCKER_ENV, ["ps"]))
+        output.append("[sitl]")
+        output.append(self._compose(SITL_COMPOSE_FILE, DOCKER_ENV, ["ps"], cwd=SITL_MODULE_DIR, env=self._sitl_env()))
         output.append("[gcs]")
         output.append(self._compose(GCS_GENERATED_DIR / "docker-compose.yml", GCS_GENERATED_DIR / ".env", ["ps"]))
         output.append("[drone_port]")
@@ -940,16 +743,6 @@ class DockerInteractiveDemo:
                 cwd=CYBER_DRONS_DIR,
             )
         )
-        output.append("[sitl_stub]")
-        try:
-            output.append(self._docker(["ps", "-a", "--filter", f"name={SITL_STUB_CONTAINER}"]))
-        except subprocess.CalledProcessError as exc:
-            output.append((exc.stdout or "") + (exc.stderr or ""))
-        output.append("[orvd_stub]")
-        try:
-            output.append(self._docker(["ps", "-a", "--filter", f"name={ORVD_STUB_CONTAINER}"]))
-        except subprocess.CalledProcessError as exc:
-            output.append((exc.stdout or "") + (exc.stderr or ""))
         return "\n".join(output)
 
     def drone_port_health(self) -> Dict[str, Any]:
@@ -1045,14 +838,8 @@ class DockerInteractiveDemo:
             compose_file = AGRODRON_GENERATED_DIR / "docker-compose.yml"
             env_file = AGRODRON_GENERATED_DIR / ".env"
             cwd = CYBER_DRONS_DIR
-        elif stack == "sitl_stub":
-            args = ["logs", "--tail", str(tail), SITL_STUB_CONTAINER]
-            return self._docker(args, cwd=ROOT)
-        elif stack == "orvd_stub":
-            args = ["logs", "--tail", str(tail), ORVD_STUB_CONTAINER]
-            return self._docker(args, cwd=ROOT)
         else:
-            raise ValueError("stack must be one of: broker, gcs, drone_port, cyber_drons, sitl_stub, orvd_stub")
+            raise ValueError("stack must be one of: broker, gcs, drone_port, cyber_drons")
 
         args = ["logs", "--tail", str(tail)]
         if service:
@@ -1105,7 +892,8 @@ class DockerInteractiveDemo:
         self.bus.start()
         for topic in DroneTopics.all():
             self.bus.subscribe(topic, self._capture_drone_message)
-        self.bus.subscribe("sitl", self._capture_sitl_message)
+        for topic in SITL_OBSERVED_TOPICS:
+            self.bus.subscribe(topic, lambda message, observed_topic=topic: self._capture_sitl_message(observed_topic, message))
         time.sleep(2)
         return "SystemBus connected and observers subscribed"
 
@@ -1120,8 +908,14 @@ class DockerInteractiveDemo:
     def _capture_drone_message(self, message: Dict[str, Any]) -> None:
         self.observed_drone_messages.append(message)
 
-    def _capture_sitl_message(self, message: Dict[str, Any]) -> None:
-        self.observed_sitl_messages.append(message)
+    def _capture_sitl_message(self, topic: str, message: Dict[str, Any]) -> None:
+        self.observed_sitl_messages.append(
+            {
+                "topic": topic,
+                "received_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "message": message,
+            }
+        )
 
     def wait_until_ready(self, timeout: int = 120) -> str:
         if self.bus is None:
@@ -1340,28 +1134,51 @@ class DockerInteractiveDemo:
             time.sleep(1)
         return None
 
+    def _require_orchestrator_ack(self, response: Optional[Dict[str, Any]], action_name: str) -> Dict[str, Any]:
+        if not response:
+            raise TimeoutError(f"{action_name}: no response from GCS orchestrator")
+
+        if response.get("success") is False:
+            raise RuntimeError(f"{action_name}: request failed on transport layer")
+
+        payload = response.get("payload")
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"{action_name}: malformed orchestrator response")
+
+        if payload.get("ok") is not True:
+            error = payload.get("error") or "unknown orchestrator error"
+            raise RuntimeError(f"{action_name}: {error}")
+
+        return response
+
     def assign_task(self, mission_id: str, drone_id: str) -> Dict[str, Any]:
         before = len(self.observed_drone_messages)
-        self.publish(
+        assign_response = self.request(
             GCSOrchestratorTopics.GCS_ORCHESTRATOR,
             GCSOrchestratorActions.TASK_ASSIGN,
             {"mission_id": mission_id, "drone_id": drone_id},
+            timeout=20.0,
         )
+        assign_response = self._require_orchestrator_ack(assign_response, "task.assign")
         time.sleep(3)
         return {
+            "orchestrator_response": assign_response,
             "mission": self.get_mission(mission_id),
             "new_drone_messages": self.observed_drone_messages[before:],
         }
 
     def start_task(self, mission_id: str, drone_id: str) -> Dict[str, Any]:
         before = len(self.observed_drone_messages)
-        self.publish(
+        start_response = self.request(
             GCSOrchestratorTopics.GCS_ORCHESTRATOR,
             GCSOrchestratorActions.TASK_START,
             {"mission_id": mission_id, "drone_id": drone_id},
+            timeout=20.0,
         )
+        start_response = self._require_orchestrator_ack(start_response, "task.start")
         time.sleep(3)
         return {
+            "orchestrator_response": start_response,
             "mission": self.get_mission(mission_id),
             "new_drone_messages": self.observed_drone_messages[before:],
         }

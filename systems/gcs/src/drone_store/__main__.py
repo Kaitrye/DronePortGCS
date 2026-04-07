@@ -1,3 +1,4 @@
+import logging
 import os
 import signal
 import time
@@ -7,6 +8,7 @@ from systems.gcs.src.drone_store.src.drone_store import DroneStoreComponent
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     component_id = os.environ.get("COMPONENT_ID", "gcs_drone_store")
     bus = create_system_bus(client_id=component_id)
     component = DroneStoreComponent(component_id=component_id, bus=bus)

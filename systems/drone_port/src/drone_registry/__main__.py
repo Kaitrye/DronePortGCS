@@ -1,4 +1,5 @@
 """Точка входа для DroneRegistry."""
+import logging
 import os
 import signal
 import time
@@ -8,6 +9,7 @@ from systems.drone_port.src.drone_registry.src.drone_registry import DroneRegist
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     component_id = os.environ.get("COMPONENT_ID", "drone_registry")
     redis_host = os.environ.get("REDIS_HOST", "redis")
     redis_port = int(os.environ.get("REDIS_PORT", "6379"))

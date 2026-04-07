@@ -30,16 +30,10 @@ def ports_status():
         result = demo.get_ports()
         if result is None:
             return {
-                "payload": {
-                    "ports": [
-                        {"id": "port-1", "status": "occupied", "drone": {"type": "DemoCopter-X", "id": "drone-demo-1"}},
-                        {"id": "port-2", "status": "available", "drone": None},
-                        {"id": "port-3", "status": "occupied", "drone": {"type": "Cargo-Drone-A", "id": "drone-demo-2"}},
-                        {"id": "port-4", "status": "available", "drone": None},
-                        {"id": "port-5", "status": "available", "drone": None},
-                        {"id": "port-6", "status": "available", "drone": None},
-                    ]
-                }
+                "error": (
+                    "Не удалось получить список портов от DronePort. "
+                    "Убедитесь, что DronePort запущен."
+                )
             }
         return result
 
