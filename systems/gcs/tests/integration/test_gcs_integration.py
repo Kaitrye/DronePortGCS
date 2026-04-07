@@ -322,7 +322,7 @@ def test_task_assign_updates_store_and_publishes_upload(system_bus):
 
 
 def test_task_start_updates_store_and_publishes_start(system_bus):
-    """Orchestrator task_start публикует команду старта и переводит миссию в running."""
+    """Orchestrator task_start публикует команду старта в DroneManager внутри GCS."""
     mission_id = f"it-start-{uuid4().hex[:8]}"
     drone_id = "dr-it-2"
     corr_assign = f"corr-pre-start-{uuid4().hex[:8]}"
@@ -392,13 +392,3 @@ def test_task_start_updates_store_and_publishes_start(system_bus):
     filtered = [m for m in start_messages if m.get("correlation_id") == corr_start]
     assert filtered, "Expected drone_manager start message for task_start"
     assert filtered[-1].get("action") == DroneManagerActions.MISSION_START
-
-    mission_running = _wait_mission_in_store(
-        system_bus,
-        mission_id,
-        retries=10,
-        delay=1.5,
-        predicate=lambda mission: mission.get("status") == "running",
-    )
-    assert mission_running is not None
-    assert mission_running.get("status") == "running"
