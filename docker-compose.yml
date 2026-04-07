@@ -6,8 +6,6 @@ services:
   redis:
     image: redis:7-alpine
     profiles: ["kafka", "mqtt"]
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     networks:
       - drones_net
     restart: unless-stopped

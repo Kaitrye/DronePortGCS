@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
 
 from broker.src.system_bus import SystemBus
 from sdk.base_redis_store_component import BaseRedisStoreComponent
 from systems.gcs.src.drone_store.topics import ComponentTopics, DroneStoreActions
+
+logger = logging.getLogger(__name__)
 
 
 class DroneStoreComponent(BaseRedisStoreComponent):
@@ -84,6 +87,7 @@ class DroneStoreComponent(BaseRedisStoreComponent):
 
     def _handle_get_drone(self, message: Dict[str, Any]) -> Dict[str, Any]:
         drone_id = message.get("payload", {}).get("drone_id")
+        logger.info("[%s] get_drone drone_id=%s", self.component_id, drone_id)
         return {
             "from": self.component_id,
             "drone": self._read_drone(drone_id),
@@ -94,6 +98,7 @@ class DroneStoreComponent(BaseRedisStoreComponent):
         payload = message.get("payload")
         telemetry = payload.get("telemetry")
         drone_id = telemetry.get("drone_id")
+        logger.info("[%s] save_telemetry drone_id=%s telemetry=%r", self.component_id, drone_id, telemetry)
 
         return self._update_drone_from_telemetry(drone_id, telemetry)
 
@@ -101,6 +106,7 @@ class DroneStoreComponent(BaseRedisStoreComponent):
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         status = payload.get("status")
+        logger.info("[%s] update_drone drone_id=%s status=%s", self.component_id, drone_id, status)
 
         drone_state = self._read_drone(drone_id) or {}
         drone_state["status"] = status

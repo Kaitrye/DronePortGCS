@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Dict
@@ -13,6 +14,8 @@ from systems.gcs.src.contracts import DroneStatus, MissionStatus
 from systems.gcs.src.drone_manager.topics import ComponentTopics, DroneManagerActions
 from systems.gcs.src.mission_store.topics import MissionStoreActions
 from systems.gcs.src.drone_store.topics import DroneStoreActions
+
+logger = logging.getLogger(__name__)
 
 
 class DroneManagerComponent(BaseComponent):
@@ -57,6 +60,14 @@ class DroneManagerComponent(BaseComponent):
             message,
             timeout=timeout,
         )
+        logger.info(
+            "[%s] proxy_request target_topic=%s target_action=%s data=%r response=%r",
+            self.component_id,
+            target_topic,
+            target_action,
+            data,
+            response,
+        )
         if not isinstance(response, dict):
             return None
         return self._unwrap_target_response(response)
@@ -100,16 +111,25 @@ class DroneManagerComponent(BaseComponent):
         mission_id = payload.get("mission_id")
         drone_id = payload.get("drone_id")
         wpl = payload.get("wpl")
+        logger.info(
+            "[%s] mission.upload received mission_id=%s drone_id=%s correlation_id=%s",
+            self.component_id,
+            mission_id,
+            drone_id,
+            correlation_id,
+        )
 
         upload_response = self._proxy_request_drone(
             DroneTopics.MISSION_HANDLER,
             DroneActions.LOAD_MISSION,
             {
                 "mission_id": mission_id,
+                "drone_id": drone_id,
                 "wpl_content": wpl,
             },
             correlation_id=correlation_id,
         )
+        logger.info("[%s] mission.upload drone response=%r", self.component_id, upload_response)
 
         mission_update_message = {
             "action": MissionStoreActions.UPDATE_MISSION,
@@ -244,6 +264,13 @@ class DroneManagerComponent(BaseComponent):
         correlation_id = message.get("correlation_id")
         mission_id = payload.get("mission_id")
         drone_id = payload.get("drone_id")
+        logger.info(
+            "[%s] mission.start received mission_id=%s drone_id=%s correlation_id=%s",
+            self.component_id,
+            mission_id,
+            drone_id,
+            correlation_id,
+        )
 
         start_response = self._proxy_request_drone(
             DroneTopics.AUTOPILOT,
@@ -253,8 +280,16 @@ class DroneManagerComponent(BaseComponent):
             },
             correlation_id=correlation_id,
         )
+        logger.info("[%s] mission.start autopilot response=%r", self.component_id, start_response)
         start_payload = self._response_payload(start_response)
         if not self._response_ok(start_response):
+            logger.warning(
+                "[%s] mission.start failed mission_id=%s drone_id=%s payload=%r",
+                self.component_id,
+                mission_id,
+                drone_id,
+                start_payload,
+            )
             return {
                 "ok": False,
                 "mission_id": mission_id,
@@ -299,6 +334,7 @@ class DroneManagerComponent(BaseComponent):
 
         if drone_id:
             self._start_telemetry_polling(drone_id)
+            logger.info("[%s] mission.start started telemetry polling drone_id=%s", self.component_id, drone_id)
 
         return {
             "ok": True,
