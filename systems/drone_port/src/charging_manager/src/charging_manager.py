@@ -51,7 +51,10 @@ class ChargingManager(BaseComponent):
             now = time.monotonic()
             dt_s = now - last_update_ts
             last_update_ts = now
-            if dt_s <= 0.0:
+            # In tests or under scheduler jitter, monotonic time may advance
+            # less than the requested sleep interval. Use the intended step so
+            # charging progress still moves forward predictably.
+            if dt_s < sleep_s:
                 dt_s = sleep_s
 
             current_battery = min(
