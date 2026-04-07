@@ -76,8 +76,8 @@ def _wait_mission_in_store(system_bus, mission_id, retries=6, delay=1.5, predica
 def _build_task_payload(start_lat=55.751244, start_lon=37.618423, end_lat=55.761244, end_lon=37.628423):
     return {
         "waypoints": [
-            {"lat": start_lat, "lon": start_lon, "alt": 120},
-            {"lat": end_lat, "lon": end_lon, "alt": 130},
+            {"lat": start_lat, "lon": start_lon, "alt_m": 120},
+            {"lat": end_lat, "lon": end_lon, "alt_m": 130},
         ],
     }
 
@@ -214,8 +214,8 @@ def test_path_planner_direct_plan_persists_mission(system_bus):
                 "mission_id": mission_id,
                 "task": {
                     "waypoints": [
-                        {"lat": 59.9311, "lon": 30.3609, "alt": 80},
-                        {"lat": 59.9411, "lon": 30.3709, "alt": 95},
+                        {"lat": 59.9311, "lon": 30.3609, "alt_m": 80},
+                        {"lat": 59.9411, "lon": 30.3709, "alt_m": 95},
                     ],
                 },
             },
@@ -322,7 +322,7 @@ def test_task_assign_updates_store_and_publishes_upload(system_bus):
 
 
 def test_task_start_updates_store_and_publishes_start(system_bus):
-    """Orchestrator task_start публикует команду старта и переводит миссию в running."""
+    """Orchestrator task_start публикует команду старта в DroneManager внутри GCS."""
     mission_id = f"it-start-{uuid4().hex[:8]}"
     drone_id = "dr-it-2"
     corr_assign = f"corr-pre-start-{uuid4().hex[:8]}"
@@ -392,13 +392,3 @@ def test_task_start_updates_store_and_publishes_start(system_bus):
     filtered = [m for m in start_messages if m.get("correlation_id") == corr_start]
     assert filtered, "Expected drone_manager start message for task_start"
     assert filtered[-1].get("action") == DroneManagerActions.MISSION_START
-
-    mission_running = _wait_mission_in_store(
-        system_bus,
-        mission_id,
-        retries=10,
-        delay=1.5,
-        predicate=lambda mission: mission.get("status") == "running",
-    )
-    assert mission_running is not None
-    assert mission_running.get("status") == "running"

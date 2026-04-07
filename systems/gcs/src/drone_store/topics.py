@@ -23,5 +23,6 @@ class ComponentTopics:
 
 
 class DroneStoreActions:
+    GET_DRONE = "store.get_drone"
     UPDATE_DRONE = "store.update_drone"
     SAVE_TELEMETRY = "telemetry.save"

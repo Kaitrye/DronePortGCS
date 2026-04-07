@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
 from broker.src.system_bus import SystemBus
@@ -9,6 +10,8 @@ from sdk.base_component import BaseComponent
 from sdk.wpl_generator_2 import points_to_wpl as points_to_wpl_v2
 from systems.gcs.src.mission_converter.topics import ComponentTopics, MissionActions
 from systems.gcs.src.mission_store.topics import MissionStoreActions
+
+logger = logging.getLogger(__name__)
 
 
 class MissionConverterComponent(BaseComponent):
@@ -27,6 +30,7 @@ class MissionConverterComponent(BaseComponent):
         payload = message.get("payload", {})
         mission_id = payload.get("mission_id")
         correlation_id = message.get("correlation_id")
+        logger.info("[%s] mission_prepare mission_id=%s correlation_id=%s", self.component_id, mission_id, correlation_id)
 
         request_message = {
             "action": MissionStoreActions.GET_MISSION,
@@ -43,6 +47,7 @@ class MissionConverterComponent(BaseComponent):
             request_message,
             timeout=10.0,
         )
+        logger.info("[%s] mission_prepare mission_store response=%r", self.component_id, mission_response)
 
         if mission_response and mission_response.get("success"):
             mission_payload = mission_response.get("payload", {})
@@ -58,6 +63,7 @@ class MissionConverterComponent(BaseComponent):
             points = []
 
         wpl = points_to_wpl_v2(points)
+        logger.info("[%s] mission_prepare generated_wpl mission_id=%s points=%s", self.component_id, mission_id, len(points))
 
         return {
             "mission": {

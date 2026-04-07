@@ -17,10 +17,12 @@
 - Docker + Docker Compose
 - Python `>= 3.12`
 - `pipenv`
+- `git submodule` support
 
 ## Быстрый сценарий
 
 ```bash
+git submodule update --init --recursive
 cp docker/example.env docker/.env
 make init
 make docker-up
@@ -38,7 +40,7 @@ make docker-down
 
 ## Веб-демо вместо ноутбука
 
-Для demo-команд НУС можно поднять web UI. При старте он сам поднимет `broker + GCS`, дождется готовности компонентов и только потом откроет web-интерфейс:
+Для demo-команд НУС можно поднять web UI. При старте он сам поднимет `broker + GCS + DronePort + AgroDron`, дождется готовности компонентов и только потом откроет web-интерфейс:
 
 ```bash
 PYTHONPATH=. python3 demo/web_demo.py

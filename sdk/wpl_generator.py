@@ -34,13 +34,13 @@ def validate_lat_lon(lat,lon):
 #     { //точка start
 #     "lat": float,
 #     "lon": float,
-#     "alt": float,
+#     "alt_m": float,
 #     },
 
 #     { //точка end
 #     "lat": float,
 #     "lon": float,
-#     "alt": float,
+#     "alt_m": float,
 #     }
 
 def expand_two_points_to_path(points, segments=DEFAULT_SEGMENTS):
@@ -61,7 +61,7 @@ def expand_two_points_to_path(points, segments=DEFAULT_SEGMENTS):
     # start
     lat0 = to_float(get_required(start, "lat", 0), "lat")
     lon0 = to_float(get_required(start, "lon", 0), "lon")
-    alt0 = to_float(get_required(start, "alt", 0), "alt")
+    alt0 = to_float(get_required(start, "alt_m", 0), "alt_m")
     validate_lat_lon(lat0, lon0)
     if alt0 < 0:
         raise ValueError(f"Altitude must be >=0, got start alt: {alt0}")
@@ -73,7 +73,7 @@ def expand_two_points_to_path(points, segments=DEFAULT_SEGMENTS):
     # end
     lat1 = to_float(get_required(end, "lat", 1), "lat")
     lon1 = to_float(get_required(end, "lon", 1), "lon")
-    alt1 = to_float(get_required(end, "alt", 1), "alt")
+    alt1 = to_float(get_required(end, "alt_m", 1), "alt_m")
     validate_lat_lon(lat1, lon1)
     if alt1 < 0:
         raise ValueError(f"Altitude must be >=0, got end alt: {alt1}")
@@ -104,7 +104,7 @@ def expand_two_points_to_path(points, segments=DEFAULT_SEGMENTS):
             {
                 "lat": lat,
                 "lon": lon,
-                "alt": alt,
+                "alt_m": alt,
                 "param1": param1,
                 "param2": param2,
                 "param3": param3,
@@ -130,7 +130,7 @@ def points_to_wpl(points, frame = DEFAULT_FRAME):
 
         lat = to_float(get_required(p, "lat", i), "lat")
         lon = to_float(get_required(p, "lon", i), "lon")
-        alt = to_float(get_required(p, "alt", i), "alt")
+        alt = to_float(get_required(p, "alt_m", i), "alt_m")
 
         validate_lat_lon(lat,lon)
 

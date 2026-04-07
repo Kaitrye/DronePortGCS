@@ -10,27 +10,27 @@ from sdk.wpl_generator import (
 def _assert_point_xyz(a, b, tol=1e-9):
     assert abs(a["lat"] - b["lat"]) <= tol
     assert abs(a["lon"] - b["lon"]) <= tol
-    assert abs(a["alt"] - b["alt"]) <= tol
+    assert abs(a["alt_m"] - b["alt_m"]) <= tol
 
 
 def test_expand_two_points_segments_5_produces_closed_cycle():
-    start = {"lat": 10, "lon": 20, "alt": 50}
-    end = {"lat": 20, "lon": 40, "alt": 150}
+    start = {"lat": 10, "lon": 20, "alt_m": 50}
+    end = {"lat": 20, "lon": 40, "alt_m": 150}
 
     path = expand_two_points_to_path([start, end], segments=5)
     assert len(path) == 11
-    _assert_point_xyz(path[0], {"lat": 10.0, "lon": 20.0, "alt": 50.0})
-    _assert_point_xyz(path[5], {"lat": 20.0, "lon": 40.0, "alt": 150.0})
-    _assert_point_xyz(path[-1], {"lat": 10.0, "lon": 20.0, "alt": 50.0})
-    _assert_point_xyz(path[1], {"lat": 12.0, "lon": 24.0, "alt": 70.0})
+    _assert_point_xyz(path[0], {"lat": 10.0, "lon": 20.0, "alt_m": 50.0})
+    _assert_point_xyz(path[5], {"lat": 20.0, "lon": 40.0, "alt_m": 150.0})
+    _assert_point_xyz(path[-1], {"lat": 10.0, "lon": 20.0, "alt_m": 50.0})
+    _assert_point_xyz(path[1], {"lat": 12.0, "lon": 24.0, "alt_m": 70.0})
 
     for i in range(len(path)):
         _assert_point_xyz(path[i], path[-1 - i])
 
 
 def test_expand_two_points_params_policy_start_mid_end():
-    start = {"lat": 0, "lon": 0, "alt": 10}
-    end = {"lat": 10, "lon": 10, "alt": 20}
+    start = {"lat": 0, "lon": 0, "alt_m": 10}
+    end = {"lat": 10, "lon": 10, "alt_m": 20}
 
     path = expand_two_points_to_path([start, end], segments=5)
     assert len(path) == 11
@@ -63,7 +63,7 @@ def test_expand_requires_exactly_two_points():
 
     with pytest.raises(ValueError, match="exactly 2 points"):
         expand_two_points_to_path(
-            [{"lat": 0, "lon": 0, "alt": 1}],
+            [{"lat": 0, "lon": 0, "alt_m": 1}],
             segments=5,
         )
 
@@ -72,8 +72,8 @@ def test_expand_requires_exactly_two_points():
 
 
 def test_expand_segments_must_be_positive():
-    start = {"lat": 0, "lon": 0, "alt": 10}
-    end = {"lat": 1, "lon": 1, "alt": 10}
+    start = {"lat": 0, "lon": 0, "alt_m": 10}
+    end = {"lat": 1, "lon": 1, "alt_m": 10}
 
     with pytest.raises(ValueError, match="Segments"):
         expand_two_points_to_path([start, end], segments=0)
@@ -81,16 +81,16 @@ def test_expand_segments_must_be_positive():
 
 def test_expand_start_and_end_must_be_different():
    
-    start = {"lat": 59.9, "lon": 30.3, "alt": 50}
-    end = {"lat": 59.9, "lon": 30.3, "alt": 100}
+    start = {"lat": 59.9, "lon": 30.3, "alt_m": 50}
+    end = {"lat": 59.9, "lon": 30.3, "alt_m": 100}
 
     with pytest.raises(ValueError, match="Start and end points must be different"):
         expand_two_points_to_path([start, end], segments=5)
 
 
 def test_expand_allows_missing_command_params_and_uses_defaults():
-    start = {"lat": 0, "lon": 0, "alt": 10}
-    end = {"lat": 1, "lon": 1, "alt": 10}
+    start = {"lat": 0, "lon": 0, "alt_m": 10}
+    end = {"lat": 1, "lon": 1, "alt_m": 10}
 
     path = expand_two_points_to_path([start, end], segments=5)
 
@@ -110,8 +110,8 @@ def test_expand_allows_missing_command_params_and_uses_defaults():
     ],
 )
 def test_expand_invalid_coordinates_raise(which, field, value, error):
-    start = {"lat": 0, "lon": 0, "alt": 10}
-    end = {"lat": 10, "lon": 10, "alt": 20}
+    start = {"lat": 0, "lon": 0, "alt_m": 10}
+    end = {"lat": 10, "lon": 10, "alt_m": 20}
 
     if which == "start":
         start[field] = value
@@ -123,15 +123,15 @@ def test_expand_invalid_coordinates_raise(which, field, value, error):
 
 
 def test_expand_negative_alt_raises():
-    start = {"lat": 0, "lon": 0, "alt": 10}
-    end = {"lat": 10, "lon": 10, "alt": -1}
+    start = {"lat": 0, "lon": 0, "alt_m": 10}
+    end = {"lat": 10, "lon": 10, "alt_m": -1}
 
     with pytest.raises(ValueError, match="Altitude must be >=0"):
         expand_two_points_to_path([start, end], segments=5)
 
 
 def test_expand_start_or_end_not_dict_raises():
-    start = {"lat": 0, "lon": 0, "alt": 10}
+    start = {"lat": 0, "lon": 0, "alt_m": 10}
     with pytest.raises(ValueError, match="must be dict objects"):
         expand_two_points_to_path([start, 123], segments=5)
 
@@ -139,17 +139,17 @@ def test_expand_start_or_end_not_dict_raises():
 def test_points_to_wpl_successful_generation_cycle_11_points():
 
     points = [
-        {"lat": 1, "lon": 2, "alt": 3, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 4, "lon": 5, "alt": 6, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 7, "lon": 8, "alt": 9, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 10, "lon": 11, "alt": 12, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 13, "lon": 14, "alt": 15, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 16, "lon": 17, "alt": 18, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 13, "lon": 14, "alt": 15, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 10, "lon": 11, "alt": 12, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 7, "lon": 8, "alt": 9, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 4, "lon": 5, "alt": 6, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 1, "lon": 2, "alt": 3, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 1, "lon": 2, "alt_m": 3, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 4, "lon": 5, "alt_m": 6, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 7, "lon": 8, "alt_m": 9, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 10, "lon": 11, "alt_m": 12, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 13, "lon": 14, "alt_m": 15, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 16, "lon": 17, "alt_m": 18, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 13, "lon": 14, "alt_m": 15, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 10, "lon": 11, "alt_m": 12, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 7, "lon": 8, "alt_m": 9, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 4, "lon": 5, "alt_m": 6, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 1, "lon": 2, "alt_m": 3, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
     ]
 
     wpl = points_to_wpl(points, frame=3)
@@ -178,12 +178,12 @@ def test_points_to_wpl_empty_points_raises():
         points_to_wpl([], frame=3)
 
 
-@pytest.mark.parametrize("missing_field", ["lat", "lon", "alt"])
+@pytest.mark.parametrize("missing_field", ["lat", "lon", "alt_m"])
 def test_points_to_wpl_missing_required_fields(missing_field):
     point = {
         "lat": 59.9,
         "lon": 30.3,
-        "alt": 80,
+        "alt_m": 80,
         "param1": 0,
         "param2": 5,
         "param3": 0,
@@ -201,7 +201,7 @@ def test_points_to_wpl_param_fields_must_be_numbers(param_field):
     point = {
         "lat": 59.9,
         "lon": 30.3,
-        "alt": 80,
+        "alt_m": 80,
         "param1": 0,
         "param2": 5,
         "param3": 0,
@@ -224,7 +224,7 @@ def test_points_to_wpl_invalid_coordinates(field, value, error):
     point = {
         "lat": 59.9,
         "lon": 30.3,
-        "alt": 80,
+        "alt_m": 80,
         "param1": 0,
         "param2": 5,
         "param3": 0,
@@ -238,7 +238,7 @@ def test_points_to_wpl_invalid_coordinates(field, value, error):
 
 
 def test_points_to_wpl_negative_alt_raises():
-    points = [{"lat": 59.9, "lon": 30.3, "alt": -1, "param1": 0, "param2": 5, "param3": 0, "param4": 0}]
+    points = [{"lat": 59.9, "lon": 30.3, "alt_m": -1, "param1": 0, "param2": 5, "param3": 0, "param4": 0}]
     with pytest.raises(ValueError, match="Altitude must be >=0"):
         points_to_wpl(points, frame=3)
 
@@ -248,8 +248,8 @@ def test_json_to_wpl_file_created_and_has_expected_lines(tmp_path):
     output_file = tmp_path / "output.wpl"
 
     points = [
-        {"lat": 59.9, "lon": 30.3, "alt": 50},
-        {"lat": 59.8, "lon": 30.2, "alt": 100},
+        {"lat": 59.9, "lon": 30.3, "alt_m": 50},
+        {"lat": 59.8, "lon": 30.2, "alt_m": 100},
     ]
     input_file.write_text(json.dumps(points), encoding="utf-8")
 
@@ -273,8 +273,8 @@ def test_json_to_wpl_interpolates_20_percent_point(tmp_path):
     output_file = tmp_path / "output.wpl"
 
     points = [
-        {"lat": 10, "lon": 20, "alt": 50},
-        {"lat": 20, "lon": 40, "alt": 150},
+        {"lat": 10, "lon": 20, "alt_m": 50},
+        {"lat": 20, "lon": 40, "alt_m": 150},
     ]
     input_file.write_text(json.dumps(points), encoding="utf-8")
 
@@ -301,8 +301,8 @@ def test_json_to_wpl_output_path_not_writable_raises(tmp_path):
     bad_output = tmp_path / "no_such_dir" / "out.wpl"
 
     points = [
-        {"lat": 59.9, "lon": 30.3, "alt": 50, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
-        {"lat": 59.8, "lon": 30.2, "alt": 100, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 59.9, "lon": 30.3, "alt_m": 50, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
+        {"lat": 59.8, "lon": 30.2, "alt_m": 100, "param1": 0, "param2": 5, "param3": 0, "param4": 0},
     ]
     input_file.write_text(json.dumps(points), encoding="utf-8")
 

@@ -29,4 +29,3 @@ class ComponentTopics:
 class DroneManagerActions:
     MISSION_UPLOAD = "mission.upload"
     MISSION_START = "mission.start"
-    TELEMETRY_SAVE = "telemetry.save"

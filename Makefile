@@ -1,4 +1,4 @@
-.PHONY: help init unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down
+.PHONY: help init unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down web-demo
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
 LOAD_ENV = set -a && . docker/.env && set +a
@@ -25,8 +25,10 @@ help:
 	@echo "make gcs-system-down   - Остановить GCS"
 	@echo "make drone-port-system-up   - Поднять DronePort"
 	@echo "make drone-port-system-down - Остановить DronePort"
+	@echo "make web-demo         - Запустить веб-сервер demo через pipenv"
 
 init:
+	@git submodule update --init --recursive
 	@command -v pipenv >/dev/null 2>&1 || pip install pipenv
 	PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv install --dev
 
@@ -71,6 +73,9 @@ drone-port-system-up:
 drone-port-system-down:
 	-@set -a && . systems/drone_port/.generated/.env && set +a && \
 		$(DRONE_PORT_COMPOSE) rm -sf redis state_store port_manager drone_registry charging_manager drone_manager orchestrator 2>/dev/null
+
+web-demo:
+	@PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python demo/web_demo.py
 
 tests: unit-test integration-test
 

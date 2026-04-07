@@ -1,3 +1,4 @@
+import logging
 import os
 import signal
 import time
@@ -7,6 +8,7 @@ from systems.gcs.src.orchestrator.src.orchestrator import OrchestratorComponent
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     component_id = os.environ.get("COMPONENT_ID", "gcs_orchestrator")
 
     bus = create_system_bus(client_id=component_id)

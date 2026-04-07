@@ -2,12 +2,15 @@
 Orchestrator — взаимодействие с Эксплуатантом и SITL.
 """
 import datetime
+import logging
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.orchestrator.topics import OrchestratorActions
 from systems.drone_port.src.orchestrator.topics import ComponentTopics as OrchestratorTopics
+
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator(BaseComponent):
@@ -33,6 +36,7 @@ class Orchestrator(BaseComponent):
         self.register_handler(OrchestratorActions.GET_AVAILABLE_DRONES, self._handle_get_available_drones)
 
     def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info("[%s] get_available_drones request=%r", self.component_id, message)
         response = self.bus.request(
             RegistryTopics.DRONE_REGISTRY,
             {
@@ -41,6 +45,7 @@ class Orchestrator(BaseComponent):
             },
             timeout=5.0,
         )
+        logger.info("[%s] get_available_drones registry response=%r", self.component_id, response)
 
         if response and response.get("success"):
             return {

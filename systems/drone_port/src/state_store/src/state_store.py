@@ -1,12 +1,15 @@
 """
 StateStore — хранение состояния портов в Redis.
 """
+import logging
 import redis
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 from systems.drone_port.src.state_store.src.ports import DEFAULT_PORTS
 from systems.drone_port.src.state_store.topics import ComponentTopics, StateStoreActions
+
+logger = logging.getLogger(__name__)
 
 
 class StateStore(BaseComponent):
@@ -30,6 +33,7 @@ class StateStore(BaseComponent):
             key = f"port:{port['port_id']}"
             if not self.redis.exists(key):
                 self.redis.hset(key, mapping=port)
+                logger.info("[%s] seed default port key=%s data=%r", component_id, key, port)
                 
         super().__init__(
             component_id=component_id,
@@ -51,6 +55,7 @@ class StateStore(BaseComponent):
             if not port_data:
                 continue
             ports.append({"port_id": port["port_id"], **port_data})
+        logger.info("[%s] get_all_ports count=%s ports=%r", self.component_id, len(ports), ports)
 
         return {
             "ports": ports,
@@ -61,6 +66,7 @@ class StateStore(BaseComponent):
         port_id = payload.get("port_id")
         drone_id = payload.get("drone_id")
         status = payload.get("status")
+        logger.info("[%s] update_port port_id=%s drone_id=%s status=%s", self.component_id, port_id, drone_id, status)
 
         self.redis.hset(
             f"port:{port_id}",

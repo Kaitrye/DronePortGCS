@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from broker.src.system_bus import SystemBus
 from sdk.base_redis_store_component import BaseRedisStoreComponent
 from systems.gcs.src.mission_store.topics import ComponentTopics, MissionStoreActions
+
+logger = logging.getLogger(__name__)
 
 
 class MissionStoreComponent(BaseRedisStoreComponent):
@@ -47,6 +50,7 @@ class MissionStoreComponent(BaseRedisStoreComponent):
     def _handle_save_mission(self, message: Dict[str, Any]) -> None:
         mission = message.get("payload", {}).get("mission", {})
         mission_id = mission.get("mission_id")
+        logger.info("[%s] save_mission mission_id=%s mission=%r", self.component_id, mission_id, mission)
 
         self._write_mission(mission)
 
@@ -55,6 +59,7 @@ class MissionStoreComponent(BaseRedisStoreComponent):
     def _handle_get_mission(self, message: Dict[str, Any]) -> Dict[str, Any]:
         mission_id = message.get("payload", {}).get("mission_id")
         mission = self._read_mission(mission_id)
+        logger.info("[%s] get_mission mission_id=%s found=%s", self.component_id, mission_id, mission is not None)
 
         return {
             "from": self.component_id,
@@ -65,6 +70,7 @@ class MissionStoreComponent(BaseRedisStoreComponent):
         payload = message.get("payload")
         mission_id = payload.get("mission_id")
         fields = payload.get("fields")
+        logger.info("[%s] update_mission mission_id=%s fields=%r", self.component_id, mission_id, fields)
 
         mission = self._read_mission(mission_id)
 

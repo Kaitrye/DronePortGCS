@@ -4,16 +4,16 @@ import sdk.wpl_generator_2 as gen
 
 
 def _approx_point(p, q, eps=1e-10):
-    return abs(p["lat"] - q["lat"]) <= eps and abs(p["lon"] - q["lon"]) <= eps and abs(p["alt"] - q["alt"]) <= eps
+    return abs(p["lat"] - q["lat"]) <= eps and abs(p["lon"] - q["lon"]) <= eps and abs(p["alt_m"] - q["alt_m"]) <= eps
 
 
 @pytest.fixture()
 def sample_points():
     # p1: start/home, p2: bottom-left, p3: top-right
     return [
-        {"lat": 55.750000, "lon": 37.610000, "alt": 60.0},
-        {"lat": 55.749000, "lon": 37.611000, "alt": 60.0},
-        {"lat": 55.752000, "lon": 37.616000, "alt": 80.0},
+        {"lat": 55.750000, "lon": 37.610000, "alt_m": 60.0},
+        {"lat": 55.749000, "lon": 37.611000, "alt_m": 60.0},
+        {"lat": 55.752000, "lon": 37.616000, "alt_m": 80.0},
     ]
 
 
@@ -27,24 +27,24 @@ def test_requires_exactly_three_points():
         gen.expand_three_points_to_snake_path([])
 
     with pytest.raises(ValueError, match="Expected exactly 3 points"):
-        gen.expand_three_points_to_snake_path([{"lat": 0, "lon": 0, "alt": 0}] * 4)
+        gen.expand_three_points_to_snake_path([{"lat": 0, "lon": 0, "alt_m": 0}] * 4)
 
 
 def test_requires_fields_lat_lon_alt():
     pts = [
-        {"lat": 55.75, "lon": 37.61, "alt": 60},
+        {"lat": 55.75, "lon": 37.61, "alt_m": 60},
         {"lat": 55.749, "lon": 37.611},  # missing alt
-        {"lat": 55.752, "lon": 37.616, "alt": 80},
+        {"lat": 55.752, "lon": 37.616, "alt_m": 80},
     ]
-    with pytest.raises(ValueError, match="missing required field 'alt'"):
+    with pytest.raises(ValueError, match="missing required field 'alt_m'"):
         gen.expand_three_points_to_snake_path(pts)
 
 
 def test_lat_lon_validation():
     pts = [
-        {"lat": 95, "lon": 0, "alt": 0},
-        {"lat": 0, "lon": 0, "alt": 0},
-        {"lat": 1, "lon": 1, "alt": 0},
+        {"lat": 95, "lon": 0, "alt_m": 0},
+        {"lat": 0, "lon": 0, "alt_m": 0},
+        {"lat": 1, "lon": 1, "alt_m": 0},
     ]
     with pytest.raises(ValueError, match="Latitude out of range"):
         gen.expand_three_points_to_snake_path(pts)
@@ -52,9 +52,9 @@ def test_lat_lon_validation():
 
 def test_altitude_non_negative():
     pts = [
-        {"lat": 55.75, "lon": 37.61, "alt": -1},
-        {"lat": 55.749, "lon": 37.611, "alt": 0},
-        {"lat": 55.752, "lon": 37.616, "alt": 0},
+        {"lat": 55.75, "lon": 37.61, "alt_m": -1},
+        {"lat": 55.749, "lon": 37.611, "alt_m": 0},
+        {"lat": 55.752, "lon": 37.616, "alt_m": 0},
     ]
     with pytest.raises(ValueError, match="Altitude must be >=0"):
         gen.expand_three_points_to_snake_path(pts)

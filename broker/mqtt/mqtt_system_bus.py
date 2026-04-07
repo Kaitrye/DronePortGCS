@@ -37,7 +37,7 @@ class MQTTSystemBus(SystemBus):
         self.broker = broker or os.environ.get("MQTT_BROKER", "localhost")
         self.port = port or int(os.environ.get("MQTT_PORT", "1883"))
         self.client_id = f"{client_id}_{uuid4().hex[:8]}"
-        topic_version = (os.environ.get("TOPIC_VERSION", "v1") or "v1").replace("/", ".")
+        topic_version = os.environ.get("TOPIC_VERSION", "v1") or "v1"
         self.qos = qos
         self.username = username or os.environ.get("BROKER_USER")
         self.password = password or os.environ.get("BROKER_PASSWORD")

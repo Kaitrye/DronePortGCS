@@ -11,7 +11,7 @@ AddRelTag("external_flow", $textColor="#B71C1C", $lineColor="#C62828", $legendTe
 
 System_Ext(operator_system, "Эксплуатант", "Внешняя система, отслеживающая статусы дронов", $tags="untrusted")
 System_Ext(drone, "Дрон", "Запрашивает посадку, взлет и зарядку", $tags="untrusted")
-System_Ext(sitl, "SITL", "Внешняя среда симуляции, получающая данные о начальных координатах дронов", $tags="untrusted")
+System_Ext(sitl, "SITL", "Внешняя среда симуляции, получающая HOME-координаты дрона", $tags="untrusted")
 
 System_Boundary(drone_port, "Дронопорт") {
   Container(orchestrator, "Orchestrator", "Внешняя точка входа для Эксплуатанта", $tags="controlled")
@@ -26,8 +26,8 @@ System_Boundary(drone_port, "Дронопорт") {
 Rel(operator_system, orchestrator, "get_available_drones", $tags="external_flow")
 Rel(orchestrator, drone_registry, "get_available_drones", $tags="trusted_flow")
 
-Rel(drone, drone_manager, "request_landing / request_takeoff / request_charging", $tags="external_flow")
-Rel(drone_manager, sitl, "started_takeoff", $tags="trusted_flow")
+Rel(drone, drone_manager, "request_landing / request_takeoff", $tags="external_flow")
+Rel(drone_manager, sitl, "sitl-drone-home (HOME)", $tags="trusted_flow")
 
 Rel(drone_manager, port_manager, "request_landing / get_port_status / free_slot", $tags="trusted_flow")
 Rel(drone_manager, drone_registry, "register_drone / get_drone", $tags="trusted_flow")

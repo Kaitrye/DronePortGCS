@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -11,6 +12,8 @@ from systems.gcs.src.orchestrator.topics import OrchestratorActions, ComponentTo
 from systems.gcs.src.path_planner.topics import PathPlannerActions
 from systems.gcs.src.mission_converter.topics import MissionActions
 from systems.gcs.src.drone_manager.topics import DroneManagerActions
+
+logger = logging.getLogger(__name__)
 
 
 # Единая точка входа для команд эксплуатанта.
@@ -32,6 +35,13 @@ class OrchestratorComponent(BaseComponent):
         task_payload = message.get("payload", {})
         correlation_id = message.get("correlation_id")
         mission_id = f"m-{uuid4().hex[:12]}"
+        logger.info(
+            "[%s] task.submit received mission_id=%s correlation_id=%s waypoints=%s",
+            self.component_id,
+            mission_id,
+            correlation_id,
+            len(task_payload.get("waypoints") or []),
+        )
 
         planned_message = {
             "action": PathPlannerActions.PATH_PLAN,
@@ -49,6 +59,7 @@ class OrchestratorComponent(BaseComponent):
             planned_message,
             timeout=10.0,
         )
+        logger.info("[%s] task.submit path planner response=%r", self.component_id, planned)
 
         if planned and planned.get("success"):
             payload = planned.get("payload", {})
@@ -72,6 +83,13 @@ class OrchestratorComponent(BaseComponent):
         correlation_id = message.get("correlation_id")
         mission_id = payload.get("mission_id")
         drone_id = payload.get("drone_id")
+        logger.info(
+            "[%s] task.assign received mission_id=%s drone_id=%s correlation_id=%s",
+            self.component_id,
+            mission_id,
+            drone_id,
+            correlation_id,
+        )
 
         prepared_message = {
             "action": MissionActions.MISSION_PREPARE,
@@ -88,6 +106,7 @@ class OrchestratorComponent(BaseComponent):
             prepared_message,
             timeout=30.0,
         )
+        logger.info("[%s] task.assign mission converter response=%r", self.component_id, prepared)
 
         if prepared and prepared.get("success"):
             prepared_payload = prepared.get("payload", {})
@@ -111,15 +130,42 @@ class OrchestratorComponent(BaseComponent):
                     ComponentTopics.GCS_DRONE_MANAGER,
                     publish_message,
                 )
+                logger.info(
+                    "[%s] task.assign published action=%s topic=%s mission_id=%s drone_id=%s",
+                    self.component_id,
+                    DroneManagerActions.MISSION_UPLOAD,
+                    ComponentTopics.GCS_DRONE_MANAGER,
+                    mission_id,
+                    drone_id,
+                )
 
-        return None
+                return {
+                    "ok": True,
+                    "mission_id": mission_id,
+                    "drone_id": drone_id,
+                    "forwarded_action": DroneManagerActions.MISSION_UPLOAD,
+                }
+
+        return {
+            "ok": False,
+            "mission_id": mission_id,
+            "drone_id": drone_id,
+            "error": "mission_prepare_failed",
+        }
 
 
-    def _handle_task_start(self, message: Dict[str, Any]) -> None:
+    def _handle_task_start(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload", {})
         correlation_id = message.get("correlation_id")
         mission_id = payload.get("mission_id")
         drone_id = payload.get("drone_id")
+        logger.info(
+            "[%s] task.start received mission_id=%s drone_id=%s correlation_id=%s",
+            self.component_id,
+            mission_id,
+            drone_id,
+            correlation_id,
+        )
 
         publish_message = {
             "action": DroneManagerActions.MISSION_START,
@@ -136,5 +182,18 @@ class OrchestratorComponent(BaseComponent):
             ComponentTopics.GCS_DRONE_MANAGER,
             publish_message,
         )
+        logger.info(
+            "[%s] task.start published action=%s topic=%s mission_id=%s drone_id=%s",
+            self.component_id,
+            DroneManagerActions.MISSION_START,
+            ComponentTopics.GCS_DRONE_MANAGER,
+            mission_id,
+            drone_id,
+        )
 
-        return None
+        return {
+            "ok": True,
+            "mission_id": mission_id,
+            "drone_id": drone_id,
+            "forwarded_action": DroneManagerActions.MISSION_START,
+        }
