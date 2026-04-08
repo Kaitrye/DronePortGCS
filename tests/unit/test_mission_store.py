@@ -143,3 +143,23 @@ def test_write_and_read_json(component):
 
     component._read_mission = lambda mission_id: component._read_json(f"gcs:mission:{mission_id}")
     assert component._read_mission("test-mission") == data
+
+
+def test_read_mission_returns_none_for_missing_key(component):
+    """Если миссия отсутствует в Redis, _read_mission возвращает None."""
+    # Мокаем _read_json, чтобы вернуть None
+    component._read_json = lambda key: None
+    assert component._read_mission("missing-mission") is None
+
+
+def test_handle_update_mission_does_nothing_if_mission_not_found(component):
+    """Если миссия не найдена (_read_mission возвращает None), ничего не пишем."""
+    component._read_mission = lambda mission_id: None
+    component._write_mission = lambda mission: pytest.fail("Should not write mission")
+
+    component._handle_update_mission({
+        "payload": {
+            "mission_id": "nonexistent",
+            "fields": {"status": "assigned"},
+        }
+    })
