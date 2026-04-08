@@ -124,6 +124,19 @@ def test_request_landing_invalid_payload_type_returns_error(mock_bus):
     mock_bus.request.assert_not_called()
 
 
+def test_request_landing_payload_none_is_treated_as_empty(mock_bus):
+    """Если payload=None, метод преобразует его в пустой словарь и возвращает ошибку drone_id required."""
+    manager = PortManager(component_id="port_manager", name="PortManager", bus=mock_bus)
+
+    result = manager._handle_request_landing({"payload": None})
+
+    # Проверяем, что пустой payload → ошибка 'drone_id required'
+    assert result == {"error": "drone_id required"}
+
+    # bus.request не вызывается, потому что drone_id нет
+    mock_bus.request.assert_not_called()
+    mock_bus.publish.assert_not_called()
+
 # -------------------------
 # FREE_SLOT (_handle_free_slot)
 # -------------------------
@@ -165,6 +178,20 @@ def test_free_slot_invalid_payload_returns_none_without_publish(mock_bus):
     assert manager._handle_free_slot({"payload": None}) is None
     mock_bus.publish.assert_not_called()
 
+def test_free_slot_invalid_payload_type_returns_none(mock_bus):
+    """payload не dict - метод тихо возвращает None и ничего не публикует."""
+    manager = PortManager(component_id="port_manager", name="PortManager", bus=mock_bus)
+
+    result = manager._handle_free_slot({"payload": []})
+    assert result is None
+
+    result = manager._handle_free_slot({"payload": 42})
+    assert result is None
+
+    result = manager._handle_free_slot({"payload": "oops"})
+    assert result is None
+
+    mock_bus.publish.assert_not_called()
 
 # -------------------------
 # GET_PORT_STATUS (_handle_get_port_status)

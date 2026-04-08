@@ -290,3 +290,70 @@ def test_write_drone_invalid_id_does_not_touch_redis(component):
     component._write_drone(None, {"status": "available"})
 
     component.redis_client.set.assert_not_called()
+
+# -------------------------
+# _normalize_drone_id: int и некорректные типы
+# -------------------------
+def test_normalize_drone_id_handles_int_and_invalid_types():
+    from systems.gcs.src.drone_store.src.drone_store import DroneStoreComponent
+
+    assert DroneStoreComponent._normalize_drone_id(123) == "123"
+    assert DroneStoreComponent._normalize_drone_id(0) == "0"
+    assert DroneStoreComponent._normalize_drone_id(3.14) is None
+    assert DroneStoreComponent._normalize_drone_id([]) is None
+    assert DroneStoreComponent._normalize_drone_id({}) is None
+
+# -------------------------
+# _read_drone: None и битый JSON
+# -------------------------
+def test_read_drone_various_cases(component):
+    # Некорректный drone_id
+    assert component._read_drone(None) is None
+    assert component._read_drone("") is None
+
+    # Redis вернул None
+    component.redis_client.get.return_value = None
+    assert component._read_drone("dr-1") is None
+
+    # Redis вернул битый JSON
+    component.redis_client.get.return_value = b"{bad-json"
+    assert component._read_drone("dr-2") is None
+
+    # Redis вернул валидный JSON
+    component.redis_client.get.return_value = json.dumps({"status": "available"}).encode()
+    result = component._read_drone("dr-3")
+    assert result == {"status": "available"}
+
+# -------------------------
+# _all_drone_ids / _available_drone_ids возвращают пустой набор при пустом Redis
+# -------------------------
+def test_all_and_available_drone_ids_empty_sets(component):
+    component.redis_client.smembers.return_value = set()
+    assert component._all_drone_ids() == set()
+    assert component._available_drone_ids() == set()
+# -------------------------
+# _update_drone_from_telemetry: drone_id None
+# -------------------------
+def test_update_drone_from_telemetry_with_none_drone_id(component):
+    # Ни один write не должен быть вызван
+    writes = []
+    component._write_drone = lambda drone_id, state: writes.append((drone_id, state))
+    component._update_drone_from_telemetry(None, {"battery": 50})
+    assert writes == []
+
+# -------------------------
+# _handle_update_drone: message и payload некорректного типа
+# -------------------------
+def test_handle_update_drone_invalid_types(component):
+    # message не dict
+    assert component._handle_update_drone(None) is None  # type: ignore[arg-type]
+
+    # payload не dict
+    assert component._handle_update_drone({"payload": None}) is None
+
+    # drone_id некорректный
+    assert component._handle_update_drone({"payload": {"drone_id": None}}) is None
+
+
+
+

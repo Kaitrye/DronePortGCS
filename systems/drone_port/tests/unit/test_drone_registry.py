@@ -155,6 +155,12 @@ def test_delete_drone_invalid_id_no_op(mock_bus, patch_droneport_redis):
 
     assert "drone:DR-9" in registry.redis.data
 
+def test_delete_drone_none_payload_no_op(mock_bus, patch_droneport_redis):
+    """payload=None - не удаляем ничего"""
+    registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
+    registry.redis.hset("drone:DR-20", {"drone_id": "DR-20"})
+    registry._handle_delete_drone({"payload": None})
+    assert "drone:DR-20" in registry.redis.data
 
 # -------------------------
 # CHARGING_STARTED
@@ -178,6 +184,12 @@ def test_charging_started_invalid_payload_no_write(mock_bus, patch_droneport_red
 
     assert registry.redis.hgetall("drone:DR-7")["status"] == "ready"
 
+def test_charging_started_none_drone_id_skipped(mock_bus, patch_droneport_redis):
+    """payload с пустым drone_id - не пишем статус"""
+    registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
+    registry.redis.hset("drone:DR-21", {"drone_id": "DR-21", "status": "ready"})
+    registry._handle_charging_started({"payload": {"drone_id": ""}})
+    assert registry.redis.hgetall("drone:DR-21")["status"] == "ready"
 
 # -------------------------
 # UPDATE_BATTERY
@@ -234,5 +246,17 @@ def test_update_battery_missing_drone_id_skipped(mock_bus, patch_droneport_redis
     registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
 
     registry._handle_update_battery({"payload": {"battery": 100}})
+
+    assert registry.redis.data == {}
+
+def test_update_battery_invalid_payload_skipped(mock_bus, patch_droneport_redis):
+    """payload не dict — метод возвращает None и ничего не пишет в Redis."""
+    registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
+
+    registry._handle_update_battery({"payload": None})
+
+    registry._handle_update_battery({"payload": "oops"})
+
+    registry._handle_update_battery({"payload": 42})
 
     assert registry.redis.data == {}
