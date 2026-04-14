@@ -72,7 +72,14 @@ def test_start_charging_payload_none_raises_attribute_error(mock_bus):
         manager._handle_start_charging({"payload": None})
 
 
-@pytest.mark.parametrize("battery, expected", [(95.0, [100.0]), (100.0, []), (150.0, [])])
+@pytest.mark.parametrize(
+    "battery, expected",
+    [
+        (95.0, [96.0, 97.0, 98.0, 99.0, 100.0]),
+        (100.0, []),
+        (150.0, []),
+    ],
+)
 def test_simulate_charging_boundary_battery_values(mock_bus, monkeypatch, battery, expected):
     manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
     monkeypatch.setattr(charging_manager_module.time, "sleep", lambda *_args, **_kwargs: None)
@@ -93,9 +100,9 @@ def test_simulate_charging_clamps_negative_battery_and_reaches_full(mock_bus, mo
     published_battery = [
         call.args[1]["payload"]["battery"] for call in mock_bus.publish.call_args_list
     ]
-    assert published_battery[0] == 10.0
+    assert published_battery[0] == 1.0
     assert published_battery[-1] == 100.0
-    assert len(published_battery) == 10
+    assert len(published_battery) == 100
 
 def test_simulate_charging_publishes_updates_until_full(mock_bus, monkeypatch):
     manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)

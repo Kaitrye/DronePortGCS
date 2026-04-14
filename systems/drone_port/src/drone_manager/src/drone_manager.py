@@ -9,9 +9,7 @@ from broker.src.system_bus import SystemBus
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.topics import (
     ComponentTopics as DroneManagerTopics,
-    DroneManagerActions,
-    ExternalTopics,
-    SITLActions,
+    DroneManagerActions
 )
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
@@ -99,7 +97,7 @@ class DroneManager(BaseComponent):
         drone_id = payload.get("drone_id")
         if not drone_id or not str(drone_id).strip():
             return {"error": "drone_id required", "from": self.component_id}
-            
+
         model = payload.get("model", "unknown")
         battery = _parse_battery_value(payload.get("battery"))
         logger.info(

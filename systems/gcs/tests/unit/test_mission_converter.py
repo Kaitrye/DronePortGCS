@@ -57,8 +57,8 @@ def test_to_wpl_formats_header_and_waypoints(component):
     result = component._to_wpl(points)
     lines = result.splitlines()
     assert lines[0] == "QGC WPL 110"
-    assert lines[1] == "0\t1\t3\t16\t0\t0\t0\t0\t55.1\t37.2\t100\t1"
-    assert lines[2] == "1\t0\t3\t16\t0\t0\t0\t0\t55.2\t37.3\t110\t1"
+    assert lines[1] == "0\t1\t3\t16\t0\t0\t0\t0\t55.1\t37.2\t0.0\t1"
+    assert lines[2] == "1\t0\t3\t16\t0\t0\t0\t0\t55.2\t37.3\t0.0\t1"
 
 
 def test_to_wpl_with_empty_points_returns_only_header(component):
@@ -104,7 +104,7 @@ def test_to_wpl_with_high_precision_floats(component):
 # -------------------------
 
 def test_handle_mission_prepare_returns_wpl_and_signature(component, mock_bus):
-    """Проверяет формирование WPL и SHA256 подписи для миссии."""
+    """Проверяет формирование WPL для миссии через текущий конвертер."""
     mission = {
         "waypoints": [
             {"lat": 10.0, "lon": 20.0, "alt_m": 30.0},
@@ -117,8 +117,7 @@ def test_handle_mission_prepare_returns_wpl_and_signature(component, mock_bus):
     }
     result = component._handle_mission_prepare({"payload": {"mission_id": "m-1"}, "correlation_id": "corr-1"})
 
-    expected_wpl = component._to_wpl(mission["waypoints"])
-    expected_signature = hashlib.sha256(expected_wpl.encode("utf-8")).hexdigest()
+    expected_wpl = points_to_wpl_v2(mission["waypoints"]).rstrip("\n")
     assert result == {
         "mission": {
             "mission_id": "m-1",

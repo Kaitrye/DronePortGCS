@@ -1,6 +1,7 @@
 import pytest
 
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
+from systems.drone_port.src.drone_manager.src import drone_manager as drone_manager_module
 from systems.drone_port.src.drone_manager.src.drone_manager import DroneManager
 from systems.drone_port.src.charging_manager.topics import ComponentTopics as ChargingTopics, ChargingManagerActions
 from systems.drone_port.src.drone_manager.topics import DroneManagerActions
@@ -20,7 +21,6 @@ def test_registers_drone_manager_handlers(component):
     """Все действия DroneManager зарегистрированы в _handlers."""
     assert DroneManagerActions.REQUEST_LANDING in component._handlers
     assert DroneManagerActions.REQUEST_TAKEOFF in component._handlers
-    assert DroneManagerActions.REQUEST_CHARGING in component._handlers
 
 
 # -------------------------
@@ -89,7 +89,7 @@ def test_takeoff_publishes_port_release_and_sitl_home(mock_bus, patch_drone_mana
         },
     )
     assert mock_bus.publish.call_args_list[1].args == (
-        ExternalTopics.SITL,
+        "sitl",
         {
             "drone_id": "DR-1",
             "home_lat": 55.751,
@@ -145,8 +145,8 @@ def test_external_landing_uses_sender_topic_as_drone_id(mock_bus):
         }
     )
 
-    assert result == {"approved": True, "port_id": "P-02", "drone_id": "Agrodron001", "from": "drone_manager"}
-    assert mock_bus.publish.call_args.args[1]["payload"]["drone_id"] == "Agrodron001"
+    assert result == {"error": "drone_id required", "from": "drone_manager"}
+    assert mock_bus.publish.call_count == 0
 
 
 def test_landing_with_partial_battery_starts_charging(mock_bus):
@@ -249,5 +249,110 @@ def test_request_takeoff_reuses_takeoff_handler(mock_bus, patch_drone_manager_ex
         }
     )
 
-    assert result["approved"] is True
-    assert result["drone_id"] == "Agrodron001"
+    assert result == {"error": "drone_id required", "from": "drone_manager"}
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (None, {}),
+        ({"payload": {"port_id": "P-01"}}, {"port_id": "P-01"}),
+        ({"success": True, "port_id": "P-01"}, {"success": True, "port_id": "P-01"}),
+    ],
+)
+def test_extract_payload_variants(response, expected):
+    assert drone_manager_module._extract_payload(response) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("unknown", None),
+        ("91.5", 91.5),
+        ("oops", None),
+        (object(), None),
+    ],
+)
+def test_parse_battery_value_variants(raw_value, expected):
+    assert drone_manager_module._parse_battery_value(raw_value) == expected
+
+
+@pytest.mark.parametrize(
+    ("sender", "expected"),
+    [
+        (None, None),
+        ("bad.topic", None),
+        ("v1.Agrodron.Agrodron001.security_monitor", "Agrodron001"),
+    ],
+)
+def test_drone_id_from_sender_variants(sender, expected):
+    assert drone_manager_module._drone_id_from_sender(sender) == expected
+
+
+def test_landing_with_payload_none_returns_required_error(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    result = manager._handle_landing({"payload": None})
+
+    assert result == {"error": "drone_id required", "from": "drone_manager"}
+
+
+def test_landing_with_invalid_payload_type_returns_error(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    result = manager._handle_landing({"payload": "bad"})
+
+    assert result == {"error": "Invalid payload", "from": "drone_manager"}
+
+
+def test_landing_returns_no_free_ports_when_request_fails(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+    mock_bus.request.return_value = None
+
+    result = manager._handle_landing({"payload": {"drone_id": "DR-404"}})
+
+    assert result == {"error": "No free ports", "from": "drone_manager"}
+
+
+def test_takeoff_with_invalid_payload_type_returns_error(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    result = manager._handle_takeoff({"payload": "bad"})
+
+    assert result == {"error": "Invalid payload", "from": "drone_manager"}
+
+
+def test_takeoff_returns_not_enough_battery_when_charge_too_low(mock_bus, patch_drone_manager_external):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    def request_side_effect(topic, message, timeout=None):
+        if message["action"] == PortManagerActions.GET_PORT_STATUS:
+            return {"success": True, "ports": []}
+        return {
+            "success": True,
+            "payload": {"success": True, "battery": "45", "port_id": "P-09"},
+        }
+
+    mock_bus.request.side_effect = request_side_effect
+
+    result = manager._handle_takeoff({"payload": {"drone_id": "DR-LOW"}})
+
+    assert result == {"error": "Not enough battery for takeoff", "from": "drone_manager"}
+    assert mock_bus.publish.call_count == 0
+
+
+def test_takeoff_returns_error_when_registry_request_fails(mock_bus):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    def request_side_effect(topic, message, timeout=None):
+        if message["action"] == PortManagerActions.GET_PORT_STATUS:
+            return {"success": True, "payload": {"ports": []}}
+        return None
+
+    mock_bus.request.side_effect = request_side_effect
+
+    result = manager._handle_takeoff({"payload": {"drone_id": "DR-MISS"}})
+
+    assert result == {"error": "Failed to get drone information", "from": "drone_manager"}

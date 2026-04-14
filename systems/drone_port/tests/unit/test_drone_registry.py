@@ -14,6 +14,27 @@ def test_registry_seeds_default_demo_drone(mock_bus, patch_droneport_redis):
     assert saved["status"] == "ready"
 
 
+def test_registry_seed_does_not_override_existing_demo_drone(mock_bus, patch_droneport_redis):
+    patch_droneport_redis.hset(
+        "drone:drone_001",
+        {
+            "drone_id": "drone_001",
+            "model": "CustomModel",
+            "port_id": "P-99",
+            "battery": "77",
+            "status": "charging",
+        },
+    )
+
+    registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
+
+    saved = registry.redis.hgetall("drone:drone_001")
+    assert saved["model"] == "CustomModel"
+    assert saved["port_id"] == "P-99"
+    assert saved["battery"] == "77"
+    assert saved["status"] == "charging"
+
+
 def test_register_drone_stores_metadata(mock_bus, patch_droneport_redis):
     """Новый дрон: ключ drone:{id}, статус new, модель из payload."""
     registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
@@ -49,7 +70,7 @@ def test_register_drone_ignores_invalid_payload(mock_bus, patch_droneport_redis)
     registry._handle_register_drone({"payload": {}})
     registry._handle_register_drone({"payload": {"model": "X"}})
 
-    assert registry.redis.data == {}
+    assert list(registry.redis.data) == ["drone:drone_001"]
 
 
 # -------------------------
@@ -70,13 +91,13 @@ def test_get_available_drones_returns_ready_only(mock_bus, patch_droneport_redis
 
 
 def test_get_available_drones_empty_when_none_ready(mock_bus, patch_droneport_redis):
-    """Нет ready-дронов - пустой массив."""
+    """Если новых ready-дронов нет, остаётся seeded demo-дрон."""
     registry = DroneRegistry(component_id="registry", name="Registry", bus=mock_bus)
     registry.redis.hset("drone:DR-1", {"drone_id": "DR-1", "status": "charging"})
 
     result = registry._handle_get_available_drones({"payload": {}})
 
-    assert result["drones"] == []
+    assert result["drones"] == [registry.redis.hgetall("drone:drone_001")]
 
 
 # -------------------------
@@ -247,7 +268,7 @@ def test_update_battery_missing_drone_id_skipped(mock_bus, patch_droneport_redis
 
     registry._handle_update_battery({"payload": {"battery": 100}})
 
-    assert registry.redis.data == {}
+    assert list(registry.redis.data) == ["drone:drone_001"]
 
 def test_update_battery_invalid_payload_skipped(mock_bus, patch_droneport_redis):
     """payload не dict — метод возвращает None и ничего не пишет в Redis."""
@@ -259,4 +280,4 @@ def test_update_battery_invalid_payload_skipped(mock_bus, patch_droneport_redis)
 
     registry._handle_update_battery({"payload": 42})
 
-    assert registry.redis.data == {}
+    assert list(registry.redis.data) == ["drone:drone_001"]

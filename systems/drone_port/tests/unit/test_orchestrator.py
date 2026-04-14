@@ -23,7 +23,7 @@ def test_get_available_drones_returns_empty_list_when_payload_missing(mock_bus):
     orchestrator = Orchestrator(component_id="orchestrator", name="Orchestrator", bus=mock_bus)
     mock_bus.request.return_value = {"success": True}
 
-    result = orchestrator._handle_get_available_drones()
+    result = orchestrator._handle_get_available_drones({"payload": {}})
 
     assert result == {"drones": [], "from": "orchestrator"}
 
@@ -34,7 +34,7 @@ def test_get_available_drones_returns_empty_list_when_drones_not_list(mock_bus):
         "payload": {"drones": "not-a-list"},
     }
 
-    result = orchestrator._handle_get_available_drones()
+    result = orchestrator._handle_get_available_drones({"payload": {}})
 
     assert result == {"drones": [], "from": "orchestrator"}
 
@@ -42,7 +42,7 @@ def test_get_available_drones_returns_error_on_failed_request(mock_bus):
     orchestrator = Orchestrator(component_id="orchestrator", name="Orchestrator", bus=mock_bus)
     mock_bus.request.return_value = None
 
-    result = orchestrator._handle_get_available_drones()
+    result = orchestrator._handle_get_available_drones({"payload": {}})
 
     assert result == {
         "error": "Failed to get available drones",
@@ -56,7 +56,7 @@ def test_get_available_drones_returns_error_when_success_false(mock_bus):
         "payload": {"drones": [{"drone_id": "DR-1"}]},
     }
 
-    result = orchestrator._handle_get_available_drones()
+    result = orchestrator._handle_get_available_drones({"payload": {}})
 
     assert result == {
         "error": "Failed to get available drones",
@@ -67,6 +67,6 @@ def test_get_available_drones_uses_component_id_in_response(mock_bus):
     orchestrator = Orchestrator(component_id="orch-42", name="Orchestrator", bus=mock_bus)
     mock_bus.request.return_value = {"success": True, "payload": {"drones": []}}
 
-    result = orchestrator._handle_get_available_drones()
+    result = orchestrator._handle_get_available_drones({"payload": {}})
 
     assert result["from"] == "orch-42"

@@ -172,7 +172,14 @@ def test_handle_task_assign_skips_publish_when_converter_fails(component, mock_b
     """Если MissionConverter вернул success=False, orchestrator ничего не публикует."""
     mock_bus.request.return_value = {"success": False, "payload": {}}
 
-    assert component._handle_task_assign({"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}, "correlation_id": "corr-15"}) is None
+    assert component._handle_task_assign(
+        {"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}, "correlation_id": "corr-15"}
+    ) == {
+        "ok": False,
+        "mission_id": "m-assign",
+        "drone_id": "dr-7",
+        "error": "mission_prepare_failed",
+    }
     mock_bus.publish.assert_not_called()
 
 
@@ -180,7 +187,14 @@ def test_handle_task_assign_skips_publish_on_timeout(component, mock_bus):
     """Если MissionConverter недоступен/таймаут (request вернул None), orchestrator ничего не публикует."""
     mock_bus.request.return_value = None
 
-    assert component._handle_task_assign({"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}, "correlation_id": "corr-16"}) is None
+    assert component._handle_task_assign(
+        {"payload": {"mission_id": "m-assign", "drone_id": "dr-7"}, "correlation_id": "corr-16"}
+    ) == {
+        "ok": False,
+        "mission_id": "m-assign",
+        "drone_id": "dr-7",
+        "error": "mission_prepare_failed",
+    }
     mock_bus.publish.assert_not_called()
 
 def test_handle_task_start_publishes_start_command(component, mock_bus):
@@ -210,7 +224,12 @@ def test_handle_task_start_publishes_start_command(component, mock_bus):
 
 def test_handle_task_start_omits_correlation_id_when_missing(component, mock_bus):
     """Если correlation_id нет, orchestrator не добавляет его в publish message."""
-    assert component._handle_task_start({"payload": {"mission_id": "m-start", "drone_id": "dr-8"}}) is None
+    assert component._handle_task_start({"payload": {"mission_id": "m-start", "drone_id": "dr-8"}}) == {
+        "ok": True,
+        "mission_id": "m-start",
+        "drone_id": "dr-8",
+        "forwarded_action": DroneManagerActions.MISSION_START,
+    }
 
     mock_bus.publish.assert_called_once()
     _, publish_message = mock_bus.publish.call_args.args
