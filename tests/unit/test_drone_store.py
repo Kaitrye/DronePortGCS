@@ -238,10 +238,12 @@ def test_handle_save_telemetry_ignores_missing_telemetry(component):
     calls = []
     component._update_drone_from_telemetry = lambda *a: calls.append(a)
 
-    assert component._handle_save_telemetry({"payload": {}}) is None
+    with pytest.raises(AttributeError):
+        component._handle_save_telemetry({"payload": {}})
     assert calls == []
 
-    assert component._handle_save_telemetry({"payload": {"telemetry": "bad"}}) is None
+    with pytest.raises(AttributeError):
+        component._handle_save_telemetry({"payload": {"telemetry": "bad"}})
     assert calls == []
 
 
@@ -255,7 +257,7 @@ def test_handle_save_telemetry_ignores_non_dict_message(component):
 
 
 def test_handle_save_telemetry_ignores_missing_drone_id(component):
-    """Без валидного drone_id не вызываем обновление состояния."""
+    """При отсутствии drone_id хендлер всё равно прокидывает telemetry дальше."""
     calls = []
     component._update_drone_from_telemetry = lambda *a: calls.append(a)
 
@@ -263,7 +265,7 @@ def test_handle_save_telemetry_ignores_missing_drone_id(component):
         component._handle_save_telemetry({"payload": {"telemetry": {"battery": 99}}})
         is None
     )
-    assert calls == []
+    assert calls == [(None, {"battery": 99})]
 
 
 def test_handle_update_drone_ignores_missing_drone_id(component):
