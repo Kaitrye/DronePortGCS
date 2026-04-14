@@ -1,4 +1,5 @@
 import pytest
+import threading
 
 from systems.gcs.topics import DroneActions, DroneTopics
 from systems.gcs.src.contracts import DroneStatus, MissionStatus
@@ -128,6 +129,23 @@ def test_proxy_request_drone_unwraps_security_monitor_payload(component, mock_bu
     assert response == nested_response
 
 
+def test_proxy_request_drone_returns_none_for_non_dict_response(component, mock_bus):
+    mock_bus.request.return_value = "bad-response"
+
+    assert component._proxy_request_drone(DroneTopics.TELEMETRY, DroneActions.TELEMETRY_GET, {"drone_id": "dr-2"}) is None
+
+
+def test_unwrap_target_response_returns_none_for_non_dict(component):
+    assert component._unwrap_target_response(None) is None
+
+
+def test_response_payload_and_ok_handle_error_shapes(component):
+    assert component._response_payload(None) is None
+    assert component._response_ok(None) is False
+    assert component._response_ok({"success": False, "payload": {"ok": True}}) is False
+    assert component._response_ok({"payload": "bad"}) is False
+
+
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
@@ -167,6 +185,14 @@ def test_proxy_request_drone_unwraps_security_monitor_payload(component, mock_bu
 )
 def test_normalize_telemetry(component, response, expected):
     assert component._normalize_telemetry(response) == expected
+
+
+def test_normalize_telemetry_handles_non_dict_payload_and_nav_battery(component):
+    assert component._normalize_telemetry(None) is None
+    assert component._normalize_telemetry({"payload": "bad"}) is None
+    assert component._normalize_telemetry(
+        {"payload": {"navigation": {"payload": {"battery_pct": 77}}}}
+    ) == {"battery": 77}
 
 
 def test_handle_mission_start(component, mock_bus, monkeypatch):
@@ -294,3 +320,104 @@ def test_poll_telemetry_loop_requests_drone_and_saves_response(component, mock_b
         timeout=5.0,
     )
     assert saved == [{"drone_id": "dr-9", "battery": 61}]
+
+
+def test_poll_telemetry_loop_skips_when_component_not_running(component, mock_bus):
+    component._running = False
+
+    class OneShotEvent:
+        def wait(self, timeout):
+            return False
+
+    component._poll_telemetry_loop("dr-stop", OneShotEvent())
+
+    mock_bus.request.assert_not_called()
+
+
+def test_poll_telemetry_loop_continues_without_saving_when_telemetry_missing(component, mock_bus, monkeypatch):
+    component._running = True
+    component._telemetry_poll_interval_s = 0.0
+
+    class TwoShotEvent:
+        def __init__(self):
+            self.calls = 0
+
+        def wait(self, timeout):
+            self.calls += 1
+            return self.calls > 1
+
+    saved = []
+    monkeypatch.setattr(component, "_save_telemetry", lambda telemetry, correlation_id=None: saved.append(telemetry))
+    mock_bus.request.return_value = {"target_response": {"payload": {"navigation": "bad"}}}
+
+    component._poll_telemetry_loop("dr-none", TwoShotEvent())
+
+    assert saved == []
+
+
+def test_start_telemetry_polling_skips_existing_live_thread(component):
+    started = []
+
+    class AliveThread:
+        def is_alive(self):
+            return True
+
+    stop_event = threading.Event()
+    component._telemetry_pollers["dr-1"] = (AliveThread(), stop_event)
+
+    component._start_telemetry_polling("dr-1")
+
+    assert component._telemetry_pollers["dr-1"][0].is_alive() is True
+
+
+def test_start_telemetry_polling_replaces_dead_thread(component, monkeypatch):
+    captured = {}
+
+    class DeadThread:
+        def is_alive(self):
+            return False
+
+    class FakeThread:
+        def __init__(self, target, args=(), daemon=None, name=None):
+            captured["target"] = target
+            captured["args"] = args
+            captured["daemon"] = daemon
+            captured["name"] = name
+
+        def start(self):
+            captured["started"] = True
+
+    component._telemetry_pollers["dr-2"] = (DeadThread(), threading.Event())
+    monkeypatch.setattr("systems.gcs.src.drone_manager.src.drone_manager.threading.Thread", FakeThread)
+
+    component._start_telemetry_polling("dr-2")
+
+    assert captured["args"][0] == "dr-2"
+    assert captured["daemon"] is True
+    assert captured["started"] is True
+
+
+def test_stop_stops_all_pollers_and_clears_registry(component, monkeypatch):
+    stopped = []
+    base_stop = []
+
+    class FakeThread:
+        def join(self, timeout=None):
+            stopped.append(timeout)
+
+    class FakeEvent:
+        def set(self):
+            stopped.append("set")
+
+    component._telemetry_pollers = {
+        "dr-1": (FakeThread(), FakeEvent()),
+        "dr-2": (FakeThread(), FakeEvent()),
+    }
+    monkeypatch.setattr("sdk.base_component.BaseComponent.stop", lambda self: base_stop.append(True))
+
+    component.stop()
+
+    assert stopped.count("set") == 2
+    assert stopped.count(1.0) == 2
+    assert component._telemetry_pollers == {}
+    assert base_stop == [True]

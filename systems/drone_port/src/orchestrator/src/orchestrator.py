@@ -48,8 +48,16 @@ class Orchestrator(BaseComponent):
         logger.info("[%s] get_available_drones registry response=%r", self.component_id, response)
 
         if response and response.get("success"):
+            payload = response.get("payload")
+            if not isinstance(payload, dict):
+                payload = {}
+
+            drones = payload.get("drones", [])
+            if not isinstance(drones, list):
+                drones = []
+
             return {
-                "drones": response.get("payload", {}).get("drones", []),
+                "drones": drones,
                 "from": self.component_id,
             }
 

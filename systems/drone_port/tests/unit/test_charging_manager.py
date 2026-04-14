@@ -1,7 +1,14 @@
+import pytest
+
 from systems.drone_port.src.charging_manager.src import charging_manager as charging_manager_module
 from systems.drone_port.src.charging_manager.src.charging_manager import ChargingManager
-from systems.drone_port.src.charging_manager.topics import ComponentTopics
+from systems.drone_port.src.charging_manager.topics import ComponentTopics, ChargingManagerActions
 from systems.drone_port.src.drone_registry.topics import DroneRegistryActions
+
+def test_registers_start_charging_handler(mock_bus):
+    manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
+
+    assert ChargingManagerActions.START_CHARGING in manager._handlers
 
 
 def test_start_charging_publishes_started_event_and_spawns_worker(mock_bus, monkeypatch):
@@ -39,6 +46,63 @@ def test_start_charging_publishes_started_event_and_spawns_worker(mock_bus, monk
         "started": True,
     }
 
+def test_start_charging_uses_default_battery_when_missing(mock_bus, monkeypatch):
+    captured = {}
+
+    class FakeThread:
+        def __init__(self, target, args=(), daemon=None):
+            captured["args"] = args
+
+        def start(self):
+            captured["started"] = True
+
+    monkeypatch.setattr(charging_manager_module.threading, "Thread", FakeThread)
+    manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
+
+    result = manager._handle_start_charging({"payload": {"drone_id": "DR-9"}})
+
+    assert result is None
+    assert captured["args"] == ("DR-9", 0.0)
+    assert captured["started"] is True
+
+def test_start_charging_payload_none_raises_attribute_error(mock_bus):
+    manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
+
+    with pytest.raises(AttributeError):
+        manager._handle_start_charging({"payload": None})
+
+
+@pytest.mark.parametrize(
+    "battery, expected",
+    [
+        (95.0, [96.0, 97.0, 98.0, 99.0, 100.0]),
+        (100.0, []),
+        (150.0, []),
+    ],
+)
+def test_simulate_charging_boundary_battery_values(mock_bus, monkeypatch, battery, expected):
+    manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
+    monkeypatch.setattr(charging_manager_module.time, "sleep", lambda *_args, **_kwargs: None)
+
+    manager._simulate_charging("DR-X", battery)
+
+    published_battery = [
+        call.args[1]["payload"]["battery"] for call in mock_bus.publish.call_args_list
+    ]
+    assert published_battery == expected
+
+def test_simulate_charging_clamps_negative_battery_and_reaches_full(mock_bus, monkeypatch):
+    manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)
+    monkeypatch.setattr(charging_manager_module.time, "sleep", lambda *_args, **_kwargs: None)
+
+    manager._simulate_charging("DR-NEG", -5.0)
+
+    published_battery = [
+        call.args[1]["payload"]["battery"] for call in mock_bus.publish.call_args_list
+    ]
+    assert published_battery[0] == 1.0
+    assert published_battery[-1] == 100.0
+    assert len(published_battery) == 100
 
 def test_simulate_charging_publishes_updates_until_full(mock_bus, monkeypatch):
     manager = ChargingManager(component_id="charging_manager", name="Charging", bus=mock_bus)

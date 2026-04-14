@@ -1,4 +1,8 @@
-.PHONY: help init unit-test integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down web-demo
+.PHONY: help init unit-test unit-test-with-coverage integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down web-demo
+
+# Абсолютный путь: иначе при PIPENV_PIPFILE=config/Pipfile pipenv часто ставит cwd=config/,
+# и HTML оказывается в config/artifacts/..., а CI ждёт artifacts/ в корне репо.
+COVERAGE_HTML_DIR := $(CURDIR)/artifacts/coverage-html
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
 LOAD_ENV = set -a && . docker/.env && set +a
@@ -39,6 +43,19 @@ unit-test:
 		components/dummy_component/tests/ \
 		systems/gcs/tests/unit/ \
 		systems/drone_port/tests/unit/ \
+		-v
+
+unit-test-with-coverage:
+	@mkdir -p $(COVERAGE_HTML_DIR)
+	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
+		tests/unit/ \
+		components/dummy_component/tests/ \
+		systems/drone_port/tests/unit/ \
+		systems/gcs/tests/unit/ \
+		--cov=systems/gcs/src \
+		--cov=systems/drone_port/src \
+		--cov-report=html:$(COVERAGE_HTML_DIR) \
+		--cov-report=term-missing \
 		-v
 
 integration-test: docker-up gcs-system-up drone-port-system-up
