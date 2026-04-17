@@ -250,6 +250,13 @@
             droneId: state.droneIdInput.value
           });
         }, 1500);
+      } else if (action === "landing") {
+        window.setTimeout(() => {
+          app.emit("port-state:changed", {
+            reason: "request-landing",
+            droneId: state.droneIdInput.value
+          });
+        }, 400);
       }
 
       app.setStatus("ok", `Готово: ${label}`);

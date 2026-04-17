@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint
 
+from demo.interactive_demo import default_demo_drone_id
 from demo.webui.runtime import demo
 from demo.webui.utils import execute, json_payload, optional_text
 
@@ -56,7 +57,7 @@ def registry_record():
     payload = json_payload()
 
     def run():
-        drone_id = optional_text(payload.get("drone_id")) or "drone-demo-1"
+        drone_id = optional_text(payload.get("drone_id")) or default_demo_drone_id()
         result = demo.get_drone_registry_record(drone_id)
         if result is None:
             return {

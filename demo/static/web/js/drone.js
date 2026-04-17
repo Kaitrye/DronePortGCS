@@ -30,9 +30,17 @@
   let missionWatchDroneId = "";
   let trackingMarker = null;
   let trackingTrail = null;
+  let trackingTrailSegments = [];
+  const MAX_TRACK_SEGMENTS = 24;
   let trackingPositions = [];
+  let lastAcceptedPositionTsMs = null;
   let missionFlightObserved = false;
   let landingRefreshSent = false;
+
+  const MAX_TRACK_POINT_DISTANCE_M = 180;
+  const MAX_TRACK_SPEED_MPS = 40;
+  const DEFAULT_TRACK_DT_S = 2;
+  const MIN_TRACK_POINT_DELTA_M = 0.8;
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -70,9 +78,85 @@
       trackingLayer.removeLayer(trackingTrail);
       trackingTrail = null;
     }
+    trackingTrailSegments.forEach((segment) => {
+      trackingLayer.removeLayer(segment);
+    });
+    trackingTrailSegments = [];
     trackingPositions = [];
+    lastAcceptedPositionTsMs = null;
     if (message) {
       trackingState.trackingHint.textContent = message;
+    }
+  }
+
+  function parseTimestampMs(value) {
+    if (!value) {
+      return null;
+    }
+    const ts = Date.parse(value);
+    return Number.isFinite(ts) ? ts : null;
+  }
+
+  function distanceMeters(a, b) {
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const lat1 = toRad(a[0]);
+    const lat2 = toRad(b[0]);
+    const dLat = lat2 - lat1;
+    const dLon = toRad(b[1] - a[1]);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLon = Math.sin(dLon / 2);
+    const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+    return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  function evaluateTrackPoint(nextLatLng, nextTsMs) {
+    const last = trackingPositions[trackingPositions.length - 1];
+    if (!last) {
+      return "accept";
+    }
+
+    const dist = distanceMeters(last, nextLatLng);
+    if (dist < MIN_TRACK_POINT_DELTA_M) {
+      return "skip";
+    }
+
+    if (dist > MAX_TRACK_POINT_DISTANCE_M) {
+      return "reset";
+    }
+
+    if (lastAcceptedPositionTsMs != null && nextTsMs != null) {
+      if (nextTsMs < lastAcceptedPositionTsMs) {
+        return "skip";
+      }
+      const dtS = Math.max((nextTsMs - lastAcceptedPositionTsMs) / 1000, 0.2);
+      if (dist / dtS > MAX_TRACK_SPEED_MPS) {
+        return "skip";
+      }
+      return "accept";
+    }
+
+    if (dist / DEFAULT_TRACK_DT_S > MAX_TRACK_SPEED_MPS) {
+      return "skip";
+    }
+
+    return "accept";
+  }
+
+  function archiveCurrentTrailSegment() {
+    if (trackingPositions.length < 2) {
+      return;
+    }
+    const segment = L.polyline(trackingPositions.slice(), {
+      color: "#58a6ff",
+      weight: 2,
+      opacity: 0.35
+    }).addTo(trackingLayer);
+    trackingTrailSegments.push(segment);
+    if (trackingTrailSegments.length > MAX_TRACK_SEGMENTS) {
+      const oldest = trackingTrailSegments.shift();
+      if (oldest) {
+        trackingLayer.removeLayer(oldest);
+      }
     }
   }
 
@@ -95,6 +179,22 @@
     }
 
     const latLng = [position.latitude, position.longitude];
+    const tsMs =
+      parseTimestampMs(drone?.source_timestamp) ||
+      parseTimestampMs(drone?.updated_at) ||
+      parseTimestampMs(drone?.connected_at);
+
+    const trackDecision = evaluateTrackPoint(latLng, tsMs);
+    if (trackDecision === "skip") {
+      return;
+    }
+
+    if (trackDecision === "reset") {
+      archiveCurrentTrailSegment();
+      trackingPositions = [latLng];
+      lastAcceptedPositionTsMs = tsMs || Date.now();
+    }
+
     trackingState.trackingHint.textContent =
       "Карта показывает последнюю сохраненную позицию дрона и накопленный трек за текущую сессию.";
 
@@ -108,6 +208,7 @@
     const last = trackingPositions[trackingPositions.length - 1];
     if (!last || last[0] !== latLng[0] || last[1] !== latLng[1]) {
       trackingPositions.push(latLng);
+      lastAcceptedPositionTsMs = tsMs || Date.now();
     }
 
     if (trackingTrail) {
@@ -165,7 +266,13 @@
   async function refreshSitlPanel(droneId) {
     try {
       const { response, data } = await app.requestJson("/api/action/snapshot", {
-        body: { drone_id: droneId || (trackingState.trackingDroneInput.value || "").trim() || "drone-demo-1" }
+        body: {
+          drone_id:
+            droneId ||
+            (trackingState.trackingDroneInput.value || "").trim() ||
+            window.defaultDemoDroneId ||
+            "1"
+        }
       });
 
       if (!response.ok || !data.ok) {

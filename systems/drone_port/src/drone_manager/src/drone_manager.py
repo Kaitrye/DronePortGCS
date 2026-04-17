@@ -18,13 +18,20 @@ class ExternalTopics:
     SITL_HOME = (os.environ.get("SITL_HOME_TOPIC") or "sitl-drone-home").strip()
 
 
-def _build_sitl_home_message(drone_id: str, drone_port: Dict[str, Any] | None) -> Dict[str, Any]:
-    return {
+def _build_sitl_home_message(
+    drone_id: str,
+    drone_port: Dict[str, Any] | None,
+    battery_pct: float | None = None,
+) -> Dict[str, Any]:
+    msg = {
         "drone_id": drone_id,
         "home_lat": float((drone_port or {}).get("lat") or 0.0),
         "home_lon": float((drone_port or {}).get("lon") or 0.0),
         "home_alt": float((drone_port or {}).get("alt") or 0.0),
     }
+    if battery_pct is not None:
+        msg["battery_pct"] = max(0.0, min(float(battery_pct), 100.0))
+    return msg
 
 
 def _extract_payload(response: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -224,7 +231,7 @@ class DroneManager(BaseComponent):
                     drone_id,
                     battery,
                     port_id,
-                    _build_sitl_home_message(drone_id, drone_port),
+                    _build_sitl_home_message(drone_id, drone_port, battery),
                 )
                 self.bus.publish(
                     PortTopics.PORT_MANAGER,
@@ -238,7 +245,10 @@ class DroneManager(BaseComponent):
                     }
                 )
 
-                self.bus.publish(ExternalTopics.SITL_HOME, _build_sitl_home_message(drone_id, drone_port))
+                self.bus.publish(
+                    ExternalTopics.SITL_HOME,
+                    _build_sitl_home_message(drone_id, drone_port, battery),
+                )
 
                 return {
                     "approved": True,

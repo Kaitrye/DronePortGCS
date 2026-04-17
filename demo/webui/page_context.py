@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
+from demo.interactive_demo import default_demo_drone_id
 from demo.webui.runtime import GCS_C4_DIR, GCS_DIAGRAMS_DIR, ROOT
 from demo.webui.security import parse_security_analysis
 
@@ -51,4 +52,5 @@ def build_index_context() -> dict[str, Any]:
         "diagrams": diagrams,
         "security_artifacts": security_artifacts,
         "security_analysis": parse_security_analysis(remote_security_analysis),
+        "default_demo_drone_id": default_demo_drone_id(),
     }

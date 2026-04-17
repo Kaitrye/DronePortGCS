@@ -12,6 +12,23 @@ from systems.gcs.src.drone_store.topics import ComponentTopics, DroneStoreAction
 logger = logging.getLogger(__name__)
 
 
+def _parse_timestamp(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = f"{raw[:-1]}+00:00"
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
 class DroneStoreComponent(BaseRedisStoreComponent):
     def __init__(self, component_id: str, bus: SystemBus):
         self.initial_fleet: Dict[str, Dict[str, Any]] = {}
@@ -64,17 +81,36 @@ class DroneStoreComponent(BaseRedisStoreComponent):
             drone_state["status"] = "connected"
 
         if "battery" in telemetry:
-            drone_state["battery"] = int(telemetry.get("battery", 0))
+            try:
+                battery_val = float(telemetry.get("battery", 0.0))
+            except (TypeError, ValueError):
+                battery_val = 0.0
+            drone_state["battery"] = round(max(0.0, min(100.0, battery_val)), 1)
+
+        incoming_source_ts = _parse_timestamp(telemetry.get("source_timestamp"))
+        stored_source_ts = _parse_timestamp(drone_state.get("source_timestamp"))
+        is_stale_telemetry = (
+            incoming_source_ts is not None
+            and stored_source_ts is not None
+            and incoming_source_ts < stored_source_ts
+        )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
 
         latitude = telemetry.get("latitude")
         longitude = telemetry.get("longitude")
         altitude = telemetry.get("altitude")
-        if latitude is not None and longitude is not None:
+        if not is_stale_telemetry and latitude is not None and longitude is not None:
             drone_state["last_position"] = {
                 "latitude": latitude,
                 "longitude": longitude,
                 "altitude": altitude,
             }
+
+        if incoming_source_ts is not None and not is_stale_telemetry:
+            drone_state["source_timestamp"] = incoming_source_ts.isoformat()
+
+        drone_state["updated_at"] = now_iso
 
         self._write_drone(drone_id, drone_state)
         return None
@@ -95,9 +131,13 @@ class DroneStoreComponent(BaseRedisStoreComponent):
 
 
     def _handle_save_telemetry(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        payload = message.get("payload")
-        telemetry = payload.get("telemetry")
+        payload = message.get("payload") or {}
+        telemetry = payload.get("telemetry") or {}
+        if not isinstance(telemetry, dict):
+            return None
         drone_id = telemetry.get("drone_id")
+        if not drone_id:
+            return None
         logger.info("[%s] save_telemetry drone_id=%s telemetry=%r", self.component_id, drone_id, telemetry)
 
         return self._update_drone_from_telemetry(drone_id, telemetry)

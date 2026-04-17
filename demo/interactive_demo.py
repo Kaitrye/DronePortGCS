@@ -51,10 +51,36 @@ DRONE_PORT_DIR = ROOT / "systems" / "drone_port"
 GCS_GENERATED_DIR = GCS_DIR / ".generated"
 DRONE_PORT_GENERATED_DIR = DRONE_PORT_DIR / ".generated"
 CYBER_DRONS_DIR = ROOT / "external" / "cyber_drons"
-AGRODRON_DIR = CYBER_DRONS_DIR / "agrodron"
+AGRODRON_DIR = CYBER_DRONS_DIR
 AGRODRON_GENERATED_DIR = AGRODRON_DIR / ".generated"
+AGRODRON_INSTANCE_ID = "Agrodron001"
+AGRODRON_DRONEPORT_DRONE_ID = "drone_001"
+AGRODRON_SECURITY_POLICIES = (
+    '[{"sender":"v1.gcs.1.drone_manager","topic":"v1.Agrodron.Agrodron001.mission_handler","action":"load_mission"},'
+    '{"sender":"v1.gcs.1.drone_manager","topic":"v1.Agrodron.Agrodron001.autopilot","action":"cmd"},'
+    '{"sender":"v1.gcs.1.drone_manager","topic":"v1.Agrodron.Agrodron001.telemetry","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.mission_handler","topic":"v1.Agrodron.Agrodron001.autopilot","action":"mission_load"},'
+    '{"sender":"v1.Agrodron.Agrodron001.autopilot","topic":"v1.Agrodron.Agrodron001.navigation","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.autopilot","topic":"v1.Agrodron.Agrodron001.motors","action":"set_target"},'
+    '{"sender":"v1.Agrodron.Agrodron001.autopilot","topic":"v1.Agrodron.Agrodron001.journal","action":"log_event"},'
+    '{"sender":"v1.Agrodron.Agrodron001.autopilot","topic":"v1.drone_port.1.drone_manager","action":"request_takeoff"},'
+    '{"sender":"v1.Agrodron.Agrodron001.autopilot","topic":"v1.drone_port.1.drone_manager","action":"request_landing"},'
+    '{"sender":"v1.Agrodron.Agrodron001.autopilot","topic":"v1.drone_port.1.drone_manager","action":"request_charging"},'
+    '{"sender":"v1.Agrodron.Agrodron001.telemetry","topic":"v1.Agrodron.Agrodron001.navigation","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.telemetry","topic":"v1.Agrodron.Agrodron001.motors","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.telemetry","topic":"v1.Agrodron.Agrodron001.sprayer","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.navigation","topic":"sitl.telemetry.request","action":"request_position"},'
+    '{"sender":"v1.Agrodron.Agrodron001.motors","topic":"sitl.commands","action":"__raw__"},'
+    '{"sender":"v1.Agrodron.Agrodron001.mission_handler","topic":"sitl-drone-home","action":"__raw__"},'
+    '{"sender":"v1.Agrodron.Agrodron001.limiter","topic":"v1.Agrodron.Agrodron001.navigation","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.limiter","topic":"v1.Agrodron.Agrodron001.telemetry","action":"get_state"},'
+    '{"sender":"v1.Agrodron.Agrodron001.emergensy","topic":"v1.Agrodron.Agrodron001.motors","action":"land"},'
+    '{"sender":"v1.Agrodron.Agrodron001.emergensy","topic":"v1.Agrodron.Agrodron001.sprayer","action":"set_spray"},'
+    '{"sender":"v1.Agrodron.Agrodron001.emergensy","topic":"v1.Agrodron.Agrodron001.journal","action":"log_event"}]'
+)
 SITL_MODULE_DIR = ROOT / "external" / "sitl_module"
 SITL_COMPOSE_FILE = SITL_MODULE_DIR / "docker-compose.yaml"
+SITL_ENV_FILE = SITL_MODULE_DIR / ".env"
 SITL_OBSERVED_TOPICS = [
     "sitl",
     "sitl-drone-home",
@@ -97,9 +123,13 @@ def write_env_file(path: Path, env: Dict[str, str]) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+def default_demo_drone_id() -> str:
+    return "drone_001"
+
+
 def default_task_waypoints() -> List[Dict[str, float]]:
     return [
-        {"lat": 55.751244, "lon": 37.618423, "alt_m": 0.0},
+        {"lat": 55.751000, "lon": 37.617000, "alt_m": 0.0},
         {"lat": 55.750900, "lon": 37.620200, "alt_m": 120.0},
         {"lat": 55.752400, "lon": 37.622000, "alt_m": 120.0},
     ]
@@ -259,6 +289,23 @@ class DockerInteractiveDemo:
         generated_env["BROKER_PASSWORD"] = root_env.get("ADMIN_PASSWORD", "admin_secret_123")
         generated_env["MQTT_BROKER"] = "mosquitto"
         generated_env["KAFKA_BOOTSTRAP_SERVERS"] = "kafka:29092"
+        generated_env["TOPIC_VERSION"] = "v1"
+        generated_env["SYSTEM_NAME"] = "Agrodron"
+        generated_env["INSTANCE_ID"] = AGRODRON_INSTANCE_ID
+        generated_env["DRONEPORT_TOPIC"] = "v1.drone_port.1.drone_manager"
+        generated_env["DRONEPORT_DRONE_ID"] = AGRODRON_DRONEPORT_DRONE_ID
+        generated_env["SITL_DRONE_ID"] = root_env.get("SITL_DRONE_ID", AGRODRON_DRONEPORT_DRONE_ID)
+        generated_env["SITL_TOPIC"] = root_env.get("SITL_TOPIC", "v1.SITL.SITL001.main")
+        generated_env["SITL_COMMANDS_TOPIC"] = root_env.get("SITL_COMMANDS_TOPIC", "sitl.commands")
+        generated_env["SITL_TELEMETRY_REQUEST_TOPIC"] = root_env.get(
+            "SITL_TELEMETRY_REQUEST_TOPIC",
+            "sitl.telemetry.request",
+        )
+        generated_env["SITL_HOME_TOPIC"] = root_env.get(
+            "SITL_VERIFIER_HOME_TOPIC",
+            root_env.get("SITL_HOME_TOPIC", "sitl-drone-home"),
+        )
+        generated_env["SECURITY_MONITOR_SECURITY_POLICIES"] = AGRODRON_SECURITY_POLICIES
         write_env_file(generated_env_path, generated_env)
         return f"Synchronized AgroDron broker settings: {generated_env_path}"
 
@@ -266,8 +313,8 @@ class DockerInteractiveDemo:
         self.ensure_root_env()
         self.ensure_cyber_drons_available()
         output = self._run(
-            ["python3", "scripts/prepare_system.py", "agrodron"],
-            cwd=CYBER_DRONS_DIR,
+            ["python3", "scripts/prepare_system.py", "external/cyber_drons"],
+            cwd=ROOT,
         )
         output += "\n" + self.sync_cyber_drons_env()
         return output
@@ -276,8 +323,8 @@ class DockerInteractiveDemo:
         self.ensure_root_env()
         self.ensure_cyber_drons_available()
         output = self._run_stream(
-            ["python3", "scripts/prepare_system.py", "agrodron"],
-            cwd=CYBER_DRONS_DIR,
+            ["python3", "scripts/prepare_system.py", "external/cyber_drons"],
+            cwd=ROOT,
             on_output=on_output,
         )
         sync_message = self.sync_cyber_drons_env()
@@ -340,13 +387,16 @@ class DockerInteractiveDemo:
     def _sitl_env(self) -> Dict[str, str]:
         env = os.environ.copy()
         env.update(parse_env_file(DOCKER_ENV))
+        env.update(parse_env_file(SITL_ENV_FILE))
         agrodron_env = parse_env_file(AGRODRON_GENERATED_DIR / ".env")
         env["DOCKER_NETWORK"] = env.get("DOCKER_NETWORK", "drones_net")
         env["BROKER_BACKEND"] = "mqtt"
-        env["MQTT_HOST"] = "mosquitto"
+        env["MQTT_BROKER"] = "mosquitto"
         env["MQTT_PORT"] = env.get("MQTT_PORT", "1883")
-        env["MQTT_USERNAME"] = env.get("ADMIN_USER", "admin")
+        env["MQTT_USER"] = env.get("ADMIN_USER", "admin")
         env["MQTT_PASSWORD"] = env.get("ADMIN_PASSWORD", "admin_secret_123")
+        env["BROKER_USER"] = env["MQTT_USER"]
+        env["BROKER_PASSWORD"] = env["MQTT_PASSWORD"]
         env["MQTT_QOS"] = "1"
         env["INPUT_TOPICS"] = ",".join(
             [
@@ -361,14 +411,15 @@ class DockerInteractiveDemo:
             "sitl.telemetry.request",
         )
         env["POSITION_RESPONSE_TOPIC"] = "sitl.telemetry.response"
+        env["REDIS_URL"] = "redis://sitl-redis:6379"
         return env
 
     def sitl_up(self) -> str:
         self.ensure_root_env()
         return self._compose(
             SITL_COMPOSE_FILE,
-            DOCKER_ENV,
-            ["up", "-d", "--build"],
+            SITL_ENV_FILE,
+            ["up", "-d", "--build", "redis", "sitl_verifier", "sitl_controller", "sitl_core", "sitl_messaging"],
             cwd=SITL_MODULE_DIR,
             env=self._sitl_env(),
         )
@@ -377,8 +428,8 @@ class DockerInteractiveDemo:
         self.ensure_root_env()
         return self._compose_stream(
             SITL_COMPOSE_FILE,
-            DOCKER_ENV,
-            ["up", "-d", "--build"],
+            SITL_ENV_FILE,
+            ["up", "-d", "--build", "redis", "sitl_verifier", "sitl_controller", "sitl_core", "sitl_messaging"],
             cwd=SITL_MODULE_DIR,
             on_output=on_output,
             env=self._sitl_env(),
@@ -388,7 +439,7 @@ class DockerInteractiveDemo:
         try:
             return self._compose(
                 SITL_COMPOSE_FILE,
-                DOCKER_ENV,
+                SITL_ENV_FILE,
                 ["down", "--remove-orphans"],
                 cwd=SITL_MODULE_DIR,
                 env=self._sitl_env(),
@@ -491,21 +542,8 @@ class DockerInteractiveDemo:
         
         if not compose_file.exists():
             raise FileNotFoundError(f"Docker compose file not found: {compose_file}")
-        
-        # 🔥 Очистка старых контейнеров
-        if on_output:
-            on_output("[drone_port] Cleaning up existing DronePort containers...\n")
-        
-        try:
-            self._compose_stream(
-                compose_file, env_file, ["down", "--remove-orphans"],
-                on_output=on_output
-            )
-        except Exception as e:
-            if on_output:
-                on_output(f"[drone_port] Warning during down: {e}\n")
-        
-        # 🔥 Запуск с --no-deps чтобы НЕ запускать зависимости (mosquitto!)
+
+        # Запуск с --no-deps чтобы не трогать общий broker из merged compose.
         if on_output:
             on_output("[drone_port] Starting DronePort services (--no-deps to skip broker)...\n")
         
@@ -571,21 +609,6 @@ class DockerInteractiveDemo:
 
         if not compose_file.exists():
             raise FileNotFoundError(f"Docker compose file not found: {compose_file}")
-
-        if on_output:
-            on_output("[cyber_drons] Cleaning up existing AgroDron containers...\n")
-
-        try:
-            self._compose_stream(
-                compose_file,
-                env_file,
-                ["down", "--remove-orphans"],
-                cwd=CYBER_DRONS_DIR,
-                on_output=on_output,
-            )
-        except Exception as exc:
-            if on_output:
-                on_output(f"[cyber_drons] Warning during down: {exc}\n")
 
         if on_output:
             on_output("[cyber_drons] Starting AgroDron services (--no-deps to reuse broker)...\n")
@@ -729,7 +752,7 @@ class DockerInteractiveDemo:
         output = ["[broker]"]
         output.append(self._compose(DOCKER_DIR / "docker-compose.yml", DOCKER_ENV, ["ps"]))
         output.append("[sitl]")
-        output.append(self._compose(SITL_COMPOSE_FILE, DOCKER_ENV, ["ps"], cwd=SITL_MODULE_DIR, env=self._sitl_env()))
+        output.append(self._compose(SITL_COMPOSE_FILE, SITL_ENV_FILE, ["ps"], cwd=SITL_MODULE_DIR, env=self._sitl_env()))
         output.append("[gcs]")
         output.append(self._compose(GCS_GENERATED_DIR / "docker-compose.yml", GCS_GENERATED_DIR / ".env", ["ps"]))
         output.append("[drone_port]")

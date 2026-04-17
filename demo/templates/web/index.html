@@ -69,6 +69,9 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script>
+      window.defaultDemoDroneId = {{ default_demo_drone_id | tojson }};
+    </script>
     <script src="{{ url_for('static', filename='web/js/common.js') }}"></script>
     <script src="{{ url_for('static', filename='web/js/nus.js') }}"></script>
     <script src="{{ url_for('static', filename='web/js/drone.js') }}"></script>

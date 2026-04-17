@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint
 
+from demo.interactive_demo import default_demo_drone_id
 from demo.webui.runtime import demo
 from demo.webui.utils import execute, json_payload, optional_text
 
@@ -35,7 +36,7 @@ def landing():
 
     def run():
         return demo.request_landing(
-            drone_id=optional_text(payload.get("drone_id")) or "drone-demo-1",
+            drone_id=optional_text(payload.get("drone_id")) or default_demo_drone_id(),
             model=optional_text(payload.get("model")) or "DemoCopter-X",
         )
 
@@ -49,7 +50,7 @@ def charging():
     def run():
         battery = float(payload.get("battery", 30))
         return demo.request_charging(
-            drone_id=optional_text(payload.get("drone_id")) or "drone-demo-1",
+            drone_id=optional_text(payload.get("drone_id")) or default_demo_drone_id(),
             battery=battery,
         )
 
@@ -61,7 +62,7 @@ def takeoff():
     payload = json_payload()
 
     def run():
-        return demo.request_takeoff(optional_text(payload.get("drone_id")) or "drone-demo-1")
+        return demo.request_takeoff(optional_text(payload.get("drone_id")) or default_demo_drone_id())
 
     return execute("takeoff", run)
 
@@ -87,7 +88,7 @@ def assign_task():
             raise ValueError("mission_id is required")
         return demo.assign_task(
             mission_id=mission_id,
-            drone_id=optional_text(payload.get("drone_id")) or "drone-demo-1",
+            drone_id=optional_text(payload.get("drone_id")) or default_demo_drone_id(),
         )
 
     return execute("assign-task", run)
@@ -103,7 +104,7 @@ def start_task():
             raise ValueError("mission_id is required")
         return demo.start_task(
             mission_id=mission_id,
-            drone_id=optional_text(payload.get("drone_id")) or "drone-demo-1",
+            drone_id=optional_text(payload.get("drone_id")) or default_demo_drone_id(),
         )
 
     return execute("start-task", run)
@@ -141,7 +142,7 @@ def snapshot():
 
     def run():
         return demo.gcs_snapshot(
-            drone_id=optional_text(payload.get("drone_id")) or "drone-demo-1",
+            drone_id=optional_text(payload.get("drone_id")) or default_demo_drone_id(),
             mission_id=optional_text(payload.get("mission_id")),
         )
 

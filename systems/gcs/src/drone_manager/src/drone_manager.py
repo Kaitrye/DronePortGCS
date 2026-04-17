@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from broker.src.system_bus import SystemBus
@@ -174,7 +175,10 @@ class DroneManagerComponent(BaseComponent):
             return None
 
         if isinstance(payload, dict) and isinstance(payload.get("telemetry"), dict):
-            return payload["telemetry"]
+            telemetry = dict(payload["telemetry"])
+            if telemetry.get("source_timestamp") is None:
+                telemetry["source_timestamp"] = datetime.now(timezone.utc).isoformat()
+            return telemetry
 
         navigation = payload.get("navigation")
         if not isinstance(navigation, dict):
@@ -193,11 +197,16 @@ class DroneManagerComponent(BaseComponent):
             telemetry["altitude"] = nav_state.get("alt_m")
         if nav_state.get("battery_pct") is not None:
             telemetry["battery"] = nav_state.get("battery_pct")
+        if nav_state.get("timestamp") is not None:
+            telemetry["source_timestamp"] = nav_state.get("timestamp")
+        elif nav_state.get("last_update") is not None:
+            telemetry["source_timestamp"] = nav_state.get("last_update")
 
         motors = payload.get("motors")
         if isinstance(motors, dict) and motors.get("battery") is not None:
             telemetry["battery"] = motors.get("battery")
 
+        telemetry.setdefault("source_timestamp", datetime.now(timezone.utc).isoformat())
         return telemetry or None
 
     def _save_telemetry(self, telemetry: Dict[str, Any], correlation_id: str | None = None) -> None:

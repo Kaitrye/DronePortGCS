@@ -164,42 +164,51 @@
     }
   }
 
-  async function loadPorts(button) {
+  async function loadPorts(button, options = {}) {
+    const silent = Boolean(options.silent);
     const output = document.getElementById("ports_status_display");
     if (button) {
       button.disabled = true;
     }
-    if (output) {
+    if (output && !silent) {
       output.textContent = "Запрос статуса портов...";
     }
-    renderMapState("port-map-loading", "Загрузка карты портов из Дронопорта...");
+    if (!silent) {
+      renderMapState("port-map-loading", "Загрузка карты портов из Дронопорта...");
+    }
 
     try {
       const { response, data } = await app.requestJson("/api/action/ports-status");
       if (!response.ok || !data.ok) {
-        if (output) {
+        if (output && !silent) {
           output.textContent = data.error || "Не удалось получить статус портов.";
         }
         updatePortStats(0, 0, 0);
         renderMapState("port-map-error", "Не удалось получить данные портов от Дронопорта.");
-        app.setStatus("err", "Ошибка получения портов");
+        if (!silent) {
+          app.setStatus("err", "Ошибка получения портов");
+        }
         return;
       }
 
-      if (output) {
+      if (output && !silent) {
         app.displayJsonInBox("ports_status_display", data.result);
       }
       renderPortMap(data.result);
       portStateDirty = false;
       portsLoadedOnce = true;
-      app.setStatus("ok", "Статус портов получен");
+      if (!silent) {
+        app.setStatus("ok", "Статус портов получен");
+      }
     } catch (error) {
-      if (output) {
+      if (output && !silent) {
         output.textContent = String(error);
       }
-      updatePortStats(0, 0, 0);
-      renderMapState("port-map-error", "Ошибка сети при загрузке карты портов.");
-      app.setStatus("err", "Ошибка сети");
+      if (!silent) {
+        updatePortStats(0, 0, 0);
+        renderMapState("port-map-error", "Ошибка сети при загрузке карты портов.");
+        app.setStatus("err", "Ошибка сети");
+      }
     } finally {
       if (button) {
         button.disabled = false;
