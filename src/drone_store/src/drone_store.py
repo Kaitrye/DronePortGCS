@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
 
+import redis
 from broker.src.system_bus import SystemBus
-from sdk.base_redis_store_component import BaseRedisStoreComponent
+from sdk.base_component import BaseComponent
 from ..topics import ComponentTopics, DroneStoreActions
 
 logger = logging.getLogger(__name__)
 
 
-class DroneStoreComponent(BaseRedisStoreComponent):
+class DroneStoreComponent(BaseComponent):
     @staticmethod
     def _normalize_drone_id(value: Any) -> Optional[str]:
         """Возвращает непустой id или None, если значение использовать нельзя."""
@@ -27,13 +29,43 @@ class DroneStoreComponent(BaseRedisStoreComponent):
 
     def __init__(self, component_id: str, bus: SystemBus):
         self.initial_fleet: Dict[str, Dict[str, Any]] = {}
+        redis_host = os.environ.get("REDIS_HOST", "redis")
+        redis_port = int(os.environ.get("REDIS_PORT", "6379"))
+        redis_db = int(os.environ.get("DRONE_STORE_REDIS_DB", "1"))
+
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+        )
+
+        try:
+            self.redis_client.ping()
+            logger.info(
+                "[%s] Redis connected at %s:%s db=%s",
+                component_id,
+                redis_host,
+                redis_port,
+                redis_db,
+            )
+        except redis.ConnectionError as exc:
+            logger.warning(
+                "[%s] Redis not available at %s:%s db=%s - %s",
+                component_id,
+                redis_host,
+                redis_port,
+                redis_db,
+                exc,
+            )
+
         super().__init__(
             component_id=component_id,
             component_type="gcs_drone_store",
             topic=ComponentTopics.DRONE_STORE,
             bus=bus,
-            redis_db_env="DRONE_STORE_REDIS_DB",
-            redis_default_db=1,
         )
 
     def _drone_key(self, drone_id: str) -> str:
