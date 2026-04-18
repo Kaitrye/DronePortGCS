@@ -2,25 +2,57 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+import redis
 from broker.src.system_bus import SystemBus
-from sdk.base_redis_store_component import BaseRedisStoreComponent
+from sdk.base_component import BaseComponent
 from ..topics import ComponentTopics, MissionStoreActions
 
 logger = logging.getLogger(__name__)
 
 
-class MissionStoreComponent(BaseRedisStoreComponent):
+class MissionStoreComponent(BaseComponent):
     def __init__(self, component_id: str, bus: SystemBus):
+        redis_host = os.environ.get("REDIS_HOST", "redis")
+        redis_port = int(os.environ.get("REDIS_PORT", "6379"))
+        redis_db = int(os.environ.get("MISSION_STORE_REDIS_DB", "0"))
+
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+        )
+
+        try:
+            self.redis_client.ping()
+            logger.info(
+                "[%s] Redis connected at %s:%s db=%s",
+                component_id,
+                redis_host,
+                redis_port,
+                redis_db,
+            )
+        except redis.ConnectionError as exc:
+            logger.warning(
+                "[%s] Redis not available at %s:%s db=%s - %s",
+                component_id,
+                redis_host,
+                redis_port,
+                redis_db,
+                exc,
+            )
+
         super().__init__(
             component_id=component_id,
             component_type="gcs_mission_store",
             topic=ComponentTopics.MISSION_STORE,
             bus=bus,
-            redis_db_env="MISSION_STORE_REDIS_DB",
-            redis_default_db=0,
         )
 
     def _mission_key(self, mission_id: str) -> str:
