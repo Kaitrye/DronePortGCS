@@ -14,6 +14,8 @@ from systems.gcs.src.contracts import DroneStatus, MissionStatus
 from systems.gcs.src.drone_manager.topics import ComponentTopics, DroneManagerActions
 from systems.gcs.src.mission_store.topics import MissionStoreActions
 from systems.gcs.src.drone_store.topics import DroneStoreActions
+from systems.gcs.src.security_monitor.topics import ExternalTopics as SecurityMonitorTopics
+from systems.gcs.src.security_monitor.topics import SecurityMonitorActions
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +44,11 @@ class DroneManagerComponent(BaseComponent):
         timeout: float = 10.0,
     ) -> Dict[str, Any] | None:
         message = {
-            "action": DroneActions.PROXY_REQUEST,
-            "sender": ComponentTopics.GCS_DRONE,
+            "action": SecurityMonitorActions.PROXY_REQUEST,
+            "sender": SecurityMonitorTopics.GCS,
             "payload": {
                 "target": {
-                    "topic": target_topic,
+                    "topic": SecurityMonitorTopics.AGRODRON,
                     "action": target_action,
                 },
                 "data": data,
@@ -56,7 +58,7 @@ class DroneManagerComponent(BaseComponent):
             message["correlation_id"] = correlation_id
 
         response = self.bus.request(
-            DroneTopics.SECURITY_MONITOR,
+            SecurityMonitorTopics.GCS,
             message,
             timeout=timeout,
         )
