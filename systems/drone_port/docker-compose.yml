@@ -138,6 +138,28 @@ services:
       - drones_net
     restart: unless-stopped
 
+  security_monitor:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/security_monitor/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=drone_port_security_monitor
+      - COMPONENT_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
+      - BROKER_TYPE=${BROKER_TYPE:-mqtt}
+      - BROKER_USER=${ADMIN_USER:-admin}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S=${SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S:-10.0}
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    restart: unless-stopped
+
 networks:
   drones_net:
     external: true

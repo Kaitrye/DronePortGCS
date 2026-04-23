@@ -2,7 +2,6 @@
 DroneManager — взаимодействие с физическими дронами.
 """
 import logging
-import os
 from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
@@ -13,12 +12,10 @@ from systems.drone_port.src.drone_manager.topics import (
 )
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
+from systems.drone_port.src.security_monitor.topics import ExternalTopics as SecurityMonitorTopics
+from systems.drone_port.src.security_monitor.topics import SecurityMonitorActions
 
 logger = logging.getLogger(__name__)
-
-
-class ExternalTopics:
-    SITL_HOME = (os.environ.get("SITL_HOME_TOPIC") or "sitl-drone-home").strip()
 
 
 def _build_sitl_home_message(drone_id: str, drone_port: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -255,8 +252,20 @@ class DroneManager(BaseComponent):
                         "sender": self.component_id,
                     }
                 )
-
-                self.bus.publish(ExternalTopics.SITL_HOME, _build_sitl_home_message(drone_id, drone_port))
+                self.bus.publish(
+                    SecurityMonitorTopics.DRONE_PORT,
+                    {
+                        "action": SecurityMonitorActions.PROXY_PUBLISH,
+                        "sender": SecurityMonitorTopics.DRONE_PORT,
+                        "payload": {
+                            "target": {
+                                "topic": SecurityMonitorTopics.SITL,
+                                "action": SecurityMonitorActions.SITL_HOME_PUBLISH,
+                            },
+                            "data": _build_sitl_home_message(drone_id, drone_port),
+                        },
+                    },
+                )
 
                 return {
                     "approved": True,
