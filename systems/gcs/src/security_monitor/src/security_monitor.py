@@ -1,0 +1,239 @@
+"""Security monitor for GCS external ingress and egress."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, Optional, Set, Tuple
+
+from broker.src.system_bus import SystemBus
+from sdk.base_component import BaseComponent
+from systems.gcs import external_topics
+from systems.gcs.src.orchestrator.topics import ComponentTopics as OrchestratorTopics
+from systems.gcs.src.security_monitor import config
+from systems.gcs.src.security_monitor.topics import ExternalTopics, SecurityMonitorActions
+from systems.gcs.topics import DroneActions
+
+
+PolicyKey = Tuple[str, str, str]
+
+logger = logging.getLogger(__name__)
+
+
+class SecurityMonitorComponent(BaseComponent):
+    def __init__(
+        self,
+        component_id: str,
+        bus: SystemBus,
+        topic: str = "",
+        policies: Optional[Set[PolicyKey]] = None,
+    ):
+        self._policies = set(policies) if policies is not None else config.load_policies_from_env()
+        self._audit_topic = config.audit_topic()
+        super().__init__(
+            component_id=component_id,
+            component_type="gcs_security_monitor",
+            topic=(topic or config.component_topic()),
+            bus=bus,
+        )
+
+    def _register_handlers(self):
+        self.register_handler(SecurityMonitorActions.PROXY_REQUEST, self._handle_proxy_request)
+        self.register_handler(SecurityMonitorActions.PROXY_PUBLISH, self._handle_proxy_publish)
+        self.register_handler(SecurityMonitorActions.LIST_POLICIES, self._handle_list_policies)
+
+    def _extract_target(self, payload: Dict[str, Any]) -> Optional[Tuple[str, str, Dict[str, Any]]]:
+        target = payload.get("target") or {}
+        target_topic = str(target.get("topic", "")).strip()
+        target_action = str(target.get("action", "")).strip()
+        if not target_topic or not target_action:
+            return None
+        target_payload = payload.get("data", {})
+        if not isinstance(target_payload, dict):
+            return None
+        return target_topic, target_action, target_payload
+
+    def _is_allowed(self, sender_id: str, target_topic: str, target_action: str) -> bool:
+        return (sender_id, target_topic, target_action) in self._policies
+
+    def _audit(self, action: str, source: str, details: Dict[str, Any]) -> None:
+        logger.info("[%s] %s source=%s details=%r", self.component_id, action, source, details)
+        if not self._audit_topic:
+            return
+
+        self.bus.publish(
+            self._audit_topic,
+            {
+                "action": action,
+                "sender": self.topic,
+                "payload": {
+                    "source": source,
+                    "details": details,
+                },
+            },
+        )
+
+    def _unwrap_target_response(self, response: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        if not isinstance(response, dict):
+            return None
+
+        target_response = response.get("target_response")
+        if isinstance(target_response, dict):
+            return target_response
+
+        payload = response.get("payload")
+        if not isinstance(payload, dict):
+            return response
+
+        nested_target_response = payload.get("target_response")
+        if isinstance(nested_target_response, dict):
+            return nested_target_response
+
+        return response
+
+    def _route_agrodron_request(self, action: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        target_topic = {
+            DroneActions.LOAD_MISSION: external_topics.ExternalTopics.AGRODRON_MISSION_HANDLER,
+            DroneActions.CMD: external_topics.ExternalTopics.AGRODRON_AUTOPILOT,
+            DroneActions.TELEMETRY_GET: external_topics.ExternalTopics.AGRODRON_TELEMETRY,
+        }.get(action)
+        if not target_topic:
+            return None
+
+        message = {
+            "action": SecurityMonitorActions.PROXY_REQUEST,
+            "sender": self.topic,
+            "payload": {
+                "target": {
+                    "topic": target_topic,
+                    "action": action,
+                },
+                "data": data,
+            },
+        }
+        response = self.bus.request(
+            external_topics.ExternalTopics.AGRODRON_SECURITY_MONITOR,
+            message,
+            timeout=config.proxy_request_timeout_s(),
+        )
+        return self._unwrap_target_response(response)
+
+    def _route_request(self, target_topic: str, target_action: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        timeout = config.proxy_request_timeout_s()
+
+        if target_topic == ExternalTopics.GCS:
+            return self.bus.request(
+                OrchestratorTopics.GCS_ORCHESTRATOR,
+                {
+                    "action": target_action,
+                    "sender": self.topic,
+                    "payload": data,
+                },
+                timeout=timeout,
+            )
+
+        if target_topic == ExternalTopics.AGRODRON:
+            return self._route_agrodron_request(target_action, data)
+
+        return None
+
+    def _route_publish(self, target_topic: str, target_action: str, data: Dict[str, Any]) -> bool:
+        if target_topic == ExternalTopics.AGRODRON:
+            target_component_topic = {
+                DroneActions.LOAD_MISSION: external_topics.ExternalTopics.AGRODRON_MISSION_HANDLER,
+                DroneActions.CMD: external_topics.ExternalTopics.AGRODRON_AUTOPILOT,
+                DroneActions.TELEMETRY_GET: external_topics.ExternalTopics.AGRODRON_TELEMETRY,
+            }.get(target_action)
+            if not target_component_topic:
+                return False
+            return self.bus.publish(
+                external_topics.ExternalTopics.AGRODRON_SECURITY_MONITOR,
+                {
+                    "action": SecurityMonitorActions.PROXY_PUBLISH,
+                    "sender": self.topic,
+                    "payload": {
+                        "target": {
+                            "topic": target_component_topic,
+                            "action": target_action,
+                        },
+                        "data": data,
+                    },
+                },
+            )
+
+        if target_topic == ExternalTopics.GCS:
+            return self.bus.publish(
+                OrchestratorTopics.GCS_ORCHESTRATOR,
+                {
+                    "action": target_action,
+                    "sender": self.topic,
+                    "payload": data,
+                },
+            )
+
+        return False
+
+    def _handle_proxy_request(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        payload = message.get("payload") or {}
+        sender_id = str(message.get("sender") or "").strip()
+        target = self._extract_target(payload)
+        if not sender_id or target is None:
+            self._audit(
+                action="gcs.monitor.proxy_request.invalid",
+                source=sender_id or "unknown",
+                details={"reason": "invalid_target_or_sender", "message": message},
+            )
+            return None
+
+        target_topic, target_action, target_payload = target
+        if not self._is_allowed(sender_id, target_topic, target_action):
+            self._audit(
+                action="gcs.monitor.proxy_request.denied",
+                source=sender_id,
+                details={
+                    "target_topic": target_topic,
+                    "target_action": target_action,
+                },
+            )
+            return None
+
+        response = self._route_request(target_topic, target_action, target_payload)
+        if not isinstance(response, dict):
+            self._audit(
+                action="gcs.monitor.proxy_request.no_response",
+                source=sender_id,
+                details={
+                    "target_topic": target_topic,
+                    "target_action": target_action,
+                },
+            )
+            return None
+
+        return {
+            "target_topic": target_topic,
+            "target_action": target_action,
+            "target_response": response,
+        }
+
+    def _handle_proxy_publish(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        payload = message.get("payload") or {}
+        sender_id = str(message.get("sender") or "").strip()
+        target = self._extract_target(payload)
+        if not sender_id or target is None:
+            return None
+
+        target_topic, target_action, target_payload = target
+        if not self._is_allowed(sender_id, target_topic, target_action):
+            return None
+
+        published = self._route_publish(target_topic, target_action, target_payload)
+        return {"published": bool(published)}
+
+    def _handle_list_policies(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        policies = [
+            {"sender": sender, "topic": topic, "action": action}
+            for sender, topic, action in sorted(self._policies)
+        ]
+        return {
+            "count": len(policies),
+            "policies": policies,
+        }

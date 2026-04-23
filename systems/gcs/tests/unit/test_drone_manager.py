@@ -7,6 +7,8 @@ from systems.gcs.src.drone_manager.src.drone_manager import DroneManagerComponen
 from systems.gcs.src.drone_manager.topics import ComponentTopics
 from systems.gcs.src.drone_store.topics import DroneStoreActions
 from systems.gcs.src.mission_store.topics import MissionStoreActions
+from systems.gcs.src.security_monitor.topics import ExternalTopics as SecurityMonitorTopics
+from systems.gcs.src.security_monitor.topics import SecurityMonitorActions
 
 
 @pytest.fixture
@@ -29,13 +31,13 @@ def test_handle_mission_upload(component, mock_bus):
     )
 
     mock_bus.request.assert_called_once_with(
-        DroneTopics.SECURITY_MONITOR,
+        SecurityMonitorTopics.GCS,
         {
-            "action": DroneActions.PROXY_REQUEST,
-            "sender": ComponentTopics.GCS_DRONE,
+            "action": SecurityMonitorActions.PROXY_REQUEST,
+            "sender": SecurityMonitorTopics.GCS,
             "payload": {
                 "target": {
-                    "topic": DroneTopics.MISSION_HANDLER,
+                    "topic": SecurityMonitorTopics.AGRODRON,
                     "action": DroneActions.LOAD_MISSION,
                 },
                 "data": {
@@ -208,13 +210,13 @@ def test_handle_mission_start(component, mock_bus, monkeypatch):
     )
 
     mock_bus.request.assert_called_once_with(
-        DroneTopics.SECURITY_MONITOR,
+        SecurityMonitorTopics.GCS,
         {
-            "action": DroneActions.PROXY_REQUEST,
-            "sender": ComponentTopics.GCS_DRONE,
+            "action": SecurityMonitorActions.PROXY_REQUEST,
+            "sender": SecurityMonitorTopics.GCS,
             "payload": {
                 "target": {
-                    "topic": DroneTopics.AUTOPILOT,
+                    "topic": SecurityMonitorTopics.AGRODRON,
                     "action": DroneActions.CMD,
                 },
                 "data": {
@@ -305,13 +307,13 @@ def test_poll_telemetry_loop_requests_drone_and_saves_response(component, mock_b
     component._poll_telemetry_loop("dr-9", OneShotEvent())
 
     mock_bus.request.assert_called_once_with(
-        DroneTopics.SECURITY_MONITOR,
+        SecurityMonitorTopics.GCS,
         {
-            "action": DroneActions.PROXY_REQUEST,
-            "sender": ComponentTopics.GCS_DRONE,
+            "action": SecurityMonitorActions.PROXY_REQUEST,
+            "sender": SecurityMonitorTopics.GCS,
             "payload": {
                 "target": {
-                    "topic": DroneTopics.TELEMETRY,
+                    "topic": SecurityMonitorTopics.AGRODRON,
                     "action": DroneActions.TELEMETRY_GET,
                 },
                 "data": {"drone_id": "dr-9"},

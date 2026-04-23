@@ -7,6 +7,8 @@ from systems.drone_port.src.charging_manager.topics import ComponentTopics as Ch
 from systems.drone_port.src.drone_manager.topics import DroneManagerActions
 from systems.drone_port.src.drone_registry.topics import ComponentTopics as RegistryTopics, DroneRegistryActions
 from systems.drone_port.src.port_manager.topics import ComponentTopics as PortTopics, PortManagerActions
+from systems.drone_port.src.security_monitor.topics import ExternalTopics as SecurityMonitorTopics
+from systems.drone_port.src.security_monitor.topics import SecurityMonitorActions
 
 
 @pytest.fixture
@@ -89,12 +91,22 @@ def test_takeoff_publishes_port_release_and_sitl_home(mock_bus, patch_drone_mana
         },
     )
     assert mock_bus.publish.call_args_list[1].args == (
-        "sitl",
+        SecurityMonitorTopics.DRONE_PORT,
         {
-            "drone_id": "DR-1",
-            "home_lat": 55.751,
-            "home_lon": 37.617,
-            "home_alt": 0.0,
+            "action": SecurityMonitorActions.PROXY_PUBLISH,
+            "sender": SecurityMonitorTopics.DRONE_PORT,
+            "payload": {
+                "target": {
+                    "topic": SecurityMonitorTopics.SITL,
+                    "action": SecurityMonitorActions.SITL_HOME_PUBLISH,
+                },
+                "data": {
+                    "drone_id": "DR-1",
+                    "home_lat": 55.751,
+                    "home_lon": 37.617,
+                    "home_alt": 0.0,
+                },
+            },
         },
     )
     assert len(mock_bus.publish.call_args_list) == 2
