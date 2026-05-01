@@ -2,9 +2,6 @@
 
 import os
 
-from ..drone_manager.topics import DroneManagerActions
-from ..orchestrator.topics import OrchestratorActions
-
 
 _NS = os.environ.get("SYSTEM_NAMESPACE", "")
 _P = f"{_NS}." if _NS else ""
@@ -15,26 +12,22 @@ class SystemTopics:
 
 
 class ComponentTopics:
-    CHARGING_MANAGER = f"{_P}components.charging_manager"
-    DRONE_MANAGER = f"{_P}components.drone_manager"
+    GATEWAY = f"{_P}components.gateway"
+    LANDING_MANAGER = f"{_P}components.takeoff_manager"
     DRONE_REGISTRY = f"{_P}components.drone_registry"
-    ORCHESTRATOR = f"{_P}components.orchestrator"
-    PORT_MANAGER = f"{_P}components.port_manager"
-    STATE_STORE = f"{_P}components.state_store"
+    TAKEOFF_MANAGER = f"{_P}components.takeoff_manager"
 
     @classmethod
     def all(cls) -> list:
         return [
-            cls.CHARGING_MANAGER,
-            cls.DRONE_MANAGER,
+            cls.GATEWAY,
+            cls.LANDING_MANAGER,
             cls.DRONE_REGISTRY,
-            cls.ORCHESTRATOR,
-            cls.PORT_MANAGER,
-            cls.STATE_STORE,
+            cls.TAKEOFF_MANAGER
         ]
 
 
 class GatewayActions:
-    GET_AVAILABLE_DRONES = OrchestratorActions.GET_AVAILABLE_DRONES
-    REQUEST_LANDING = DroneManagerActions.REQUEST_LANDING
-    REQUEST_TAKEOFF = DroneManagerActions.REQUEST_TAKEOFF
+    GET_AVAILABLE_DRONES = "get_available_drones"
+    REQUEST_LANDING = "request_landing"
+    REQUEST_TAKEOFF = "request_takeoff"

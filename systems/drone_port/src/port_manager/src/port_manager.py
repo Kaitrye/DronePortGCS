@@ -1,35 +1,22 @@
-"""
-PortManager — управление посадочными площадками.
-"""
+"""PortManager — управление посадочными слотами."""
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 
-from ...state_store.topics import StateStoreActions
 from ..topics import ComponentTopics, PortManagerActions
 
 logger = logging.getLogger(__name__)
 
 
-def _extract_payload(response: Dict[str, Any] | None) -> Dict[str, Any]:
-    """Поддерживаем и реальный bus-ответ, и старые unit-test моки."""
-    if not response:
-        return {}
-    payload = response.get("payload")
-    if isinstance(payload, dict):
-        return payload
-    return response
-
-
 class PortManager(BaseComponent):
-    def __init__(
-        self,
-        component_id: str,
-        name: str,
-        bus: SystemBus,
-    ):
+    def __init__(self, component_id: str, name: str, bus: SystemBus):
+        # Инициализируем _ports ДО вызова super().__init__
+        # потому что super() вызовет _register_handlers
+        self._ports: Dict[str, Dict] = {}
+        self._seed_ports()
+        
         super().__init__(
             component_id=component_id,
             component_type="drone_port",
@@ -38,94 +25,50 @@ class PortManager(BaseComponent):
         )
         self.name = name
 
-    def _register_handlers(self) -> None:
-        self.register_handler(PortManagerActions.REQUEST_LANDING, self._handle_request_landing)
-        self.register_handler(PortManagerActions.FREE_SLOT, self._handle_free_slot)
-        self.register_handler(PortManagerActions.GET_PORT_STATUS, self._handle_get_port_status)
-
-    def _handle_request_landing(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        payload = message.get("payload")
-        if payload is None:
-            payload = {}
-        elif not isinstance(payload, dict):
-            return {"error": "Invalid payload"}
-        drone_id = payload.get("drone_id")
-        if not drone_id or not str(drone_id).strip():
-            return {"error": "drone_id required"}
-        logger.info("[%s] request_landing drone_id=%s", self.component_id, drone_id)
-
-        response = self.bus.request(
-            ComponentTopics.STATE_STORE,
-            {
-                "action": StateStoreActions.GET_ALL_PORTS,
-                "payload": {},
-            },
-            timeout=3.0,
-        )
-        ports = _extract_payload(response).get("ports", [])
-        logger.info("[%s] request_landing ports=%r", self.component_id, ports)
-
-        for port in ports:
-            if not port.get("drone_id"):
-                self.bus.publish(
-                    ComponentTopics.STATE_STORE,
-                    {
-                        "action": StateStoreActions.UPDATE_PORT,
-                        "payload": {
-                            "port_id": port["port_id"],
-                            "drone_id": drone_id,
-                            "status": "reserved",
-                        },
-                    }
-                )
-
-                return {
-                    "port_id": port["port_id"],
-                }
-
-        logger.warning("[%s] request_landing no free ports for drone_id=%s", self.component_id, drone_id)
-        return {
-            "error": "No free ports"
-        }
-
-    def _handle_free_slot(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Освободить порт."""
-        payload = message.get("payload")
-        if payload is None:
-            payload = {}
-        elif not isinstance(payload, dict):
-            return None
-        port_id = payload.get("port_id")
-        
-        if not port_id or not str(port_id).strip():
-            return None
-        logger.info("[%s] free_slot port_id=%s payload=%r", self.component_id, port_id, payload)
-
-        self.bus.publish(
-            ComponentTopics.STATE_STORE,
-            {
-                "action": StateStoreActions.UPDATE_PORT,
-                "payload": {
-                    "port_id": port_id,
-                    "drone_id": None,
-                    "status": "free",
-                },
+    def _seed_ports(self) -> None:
+        """Инициализация портов."""
+        if not self._ports:
+            self._ports = {
+                "P-01": {"port_id": "P-01", "drone_id": None, "status": "free"},
+                "P-02": {"port_id": "P-02", "drone_id": None, "status": "free"},
+                "P-03": {"port_id": "P-03", "drone_id": None, "status": "free"},
+                "P-04": {"port_id": "P-04", "drone_id": None, "status": "free"},
             }
-        )
-        
-        return None
+            logger.info("[%s] Initialized 4 ports", self.component_id if hasattr(self, 'component_id') else "port_manager")
 
-    def _handle_get_port_status(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        response = self.bus.request(
-            ComponentTopics.STATE_STORE,
-            {
-                "action": StateStoreActions.GET_ALL_PORTS,
-                "payload": {},
-            },
-            timeout=3.0,
-        )
-        logger.info("[%s] get_port_status response=%r", self.component_id, response)
+    def _register_handlers(self) -> None:
+        """Регистрация обработчиков."""
+        self.register_handler(PortManagerActions.OCCUPY_PORT, self._handle_occupy_port)
+        self.register_handler(PortManagerActions.RELEASE_PORT, self._handle_release_port)
 
-        return {
-            "ports": _extract_payload(response).get("ports", []),
-        }
+    def _handle_occupy_port(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Резервирование порта для дрона."""
+        payload = message.get("payload", {})
+        drone_id = payload.get("drone_id")
+
+        if not drone_id:
+            return {"error": "drone_id required"}
+
+        for port_id, port in self._ports.items():
+            if port["status"] == "free" and port["drone_id"] is None:
+                port["drone_id"] = drone_id
+                port["status"] = "occupied"
+                logger.info("[%s] Occupied port %s for drone %s", self.component_id, port_id, drone_id)
+                return {"port_id": port_id}
+
+        logger.warning("[%s] No free ports for drone %s", self.component_id, drone_id)
+        return {"error": "No free ports"}
+
+    def _handle_release_port(self, message: Dict[str, Any]) -> None:
+        """Освобождение порта."""
+        payload = message.get("payload", {})
+        port_id = payload.get("port_id")
+        drone_id = payload.get("drone_id")
+
+        if not port_id or port_id not in self._ports:
+            logger.warning("[%s] Invalid port_id %s for release", self.component_id, port_id)
+            return
+
+        self._ports[port_id]["drone_id"] = None
+        self._ports[port_id]["status"] = "free"
+        logger.info("[%s] Released port %s from drone %s", self.component_id, port_id, drone_id)

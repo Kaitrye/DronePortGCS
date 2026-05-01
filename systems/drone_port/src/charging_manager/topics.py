@@ -21,4 +21,3 @@ class ComponentTopics:
 
 class ChargingManagerActions:
     START_CHARGING = "start_charging"
-    GET_CHARGING_STATUS = "get_charging_status"

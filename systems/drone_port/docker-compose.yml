@@ -10,34 +10,13 @@ services:
       - drones_net
     restart: unless-stopped
 
-  state_store:
+  landing_manager:
     build:
       context: ../..
-      dockerfile: systems/drone_port/src/state_store/docker/Dockerfile
+      dockerfile: systems/drone_port/src/landing_manager/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
-      - COMPONENT_ID=state_store
-      - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
-      - BROKER_TYPE=${BROKER_TYPE:-mqtt}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
-    restart: unless-stopped
-
-  orchestrator:
-    build:
-      context: ../..
-      dockerfile: systems/drone_port/src/orchestrator/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
-    environment:
-      - COMPONENT_ID=orchestrator
+      - COMPONENT_ID=landing_manager
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -49,16 +28,38 @@ services:
     networks:
       - drones_net
     restart: unless-stopped
+    depends_on:
+      - redis
 
-  drone_manager:
+  takeoff_manager:
     build:
       context: ../..
-      dockerfile: systems/drone_port/src/drone_manager/docker/Dockerfile
+      dockerfile: systems/drone_port/src/takeoff_manager/docker/Dockerfile
     profiles: ["kafka", "mqtt"]
     environment:
-      - COMPONENT_ID=drone_manager
+      - COMPONENT_ID=takeoff_manager
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
-      - SITL_HOME_TOPIC=${SITL_HOME_TOPIC:-sitl-drone-home}
+      - BROKER_TYPE=${BROKER_TYPE:-mqtt}
+      - BROKER_USER=${ADMIN_USER:-admin}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - PYTHONUNBUFFERED=1
+    networks:
+      - drones_net
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  port_manager:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/port_manager/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=port_manager
+      - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
       - BROKER_USER=${ADMIN_USER:-admin}
       - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
@@ -90,27 +91,8 @@ services:
     networks:
       - drones_net
     restart: unless-stopped
-
-  port_manager:
-    build:
-      context: ../..
-      dockerfile: systems/drone_port/src/port_manager/docker/Dockerfile
-    profiles: ["kafka", "mqtt"]
-    environment:
-      - COMPONENT_ID=port_manager
-      - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
-      - BROKER_TYPE=${BROKER_TYPE:-mqtt}
-      - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - PYTHONUNBUFFERED=1
-    networks:
-      - drones_net
-    restart: unless-stopped
+    depends_on:
+      - redis
 
   charging_manager:
     build:
@@ -126,8 +108,6 @@ services:
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
     networks:
       - drones_net
@@ -149,9 +129,17 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - HEALTH_PORT=8080
       - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"
     networks:
       - drones_net
     restart: unless-stopped
+    depends_on:
+      - landing_manager
+      - takeoff_manager
+      - port_manager
+      - drone_registry
+      - charging_manager
 
 networks:
   drones_net:

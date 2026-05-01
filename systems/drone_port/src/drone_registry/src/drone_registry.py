@@ -1,6 +1,4 @@
-"""
-DroneRegistry — реестр дронов в Redis.
-"""
+"""DroneRegistry — состояние дронов."""
 import datetime
 import logging
 from typing import Dict, Any
@@ -9,15 +7,9 @@ import redis
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 
-from ..topics import ComponentTopics as RegistryTopics, DroneRegistryActions
+from ..topics import ComponentTopics, DroneRegistryActions
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_DEMO_DRONE_ID = "drone_001"
-DEFAULT_DEMO_DRONE_MODEL = "AgroDron"
-DEFAULT_DEMO_DRONE_PORT_ID = "P-01"
-DEFAULT_DEMO_DRONE_BATTERY = "100"
 
 
 class DroneRegistry(BaseComponent):
@@ -26,178 +18,146 @@ class DroneRegistry(BaseComponent):
         component_id: str,
         name: str,
         bus: SystemBus,
-        redis_host: str = "redis",
+        redis_host: str = "localhost",
         redis_port: int = 6379,
     ):
         self.redis = redis.Redis(
             host=redis_host,
             port=redis_port,
             decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
         )
-        self._seed_default_demo_drone()
-
         super().__init__(
             component_id=component_id,
             component_type="drone_port",
-            topic=RegistryTopics.DRONE_REGISTRY,
+            topic=ComponentTopics.DRONE_REGISTRY,
             bus=bus,
         )
         self.name = name
 
-    def _seed_default_demo_drone(self) -> None:
-        key = f"drone:{DEFAULT_DEMO_DRONE_ID}"
-        if self.redis.hgetall(key):
-            return
-
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        self.redis.hset(
-            key,
-            mapping={
-                "drone_id": DEFAULT_DEMO_DRONE_ID,
-                "model": DEFAULT_DEMO_DRONE_MODEL,
-                "port_id": DEFAULT_DEMO_DRONE_PORT_ID,
-                "battery": DEFAULT_DEMO_DRONE_BATTERY,
-                "status": "ready",
-                "registered_at": now,
-                "updated_at": now,
-            },
-        )
+    def _get_key(self, drone_id: str) -> str:
+        return f"drone:{drone_id}"
 
     def _register_handlers(self) -> None:
-        self.register_handler(DroneRegistryActions.REGISTER_DRONE, self._handle_register_drone)
-        self.register_handler(DroneRegistryActions.GET_DRONE, self._handle_get_drone)
-        self.register_handler(DroneRegistryActions.GET_AVAILABLE_DRONES, self._handle_get_available_drones)
-        self.register_handler(DroneRegistryActions.DELETE_DRONE, self._handle_delete_drone)
-        self.register_handler(DroneRegistryActions.CHARGING_STARTED, self._handle_charging_started)
+        self.register_handler(DroneRegistryActions.REGISTER_DRONE, self._handle_register)
+        self.register_handler(DroneRegistryActions.REMOVE_DRONE, self._handle_remove)
+        self.register_handler(DroneRegistryActions.GET_AVAILABLE_DRONES, self._handle_get_available)
         self.register_handler(DroneRegistryActions.UPDATE_BATTERY, self._handle_update_battery)
+        self.register_handler(DroneRegistryActions.GET_DRONE, self._handle_get_drone)
 
-    def _handle_register_drone(self, message: Dict[str, Any]) -> None:
-        """
-        Регистрация нового дрона.
-        """
+    def _handle_register(self, message: Dict[str, Any]) -> None:
         payload = message.get("payload")
+        
         if not isinstance(payload, dict):
-            return None
+            logger.warning("[%s] Invalid payload for register_drone: %r", self.component_id, payload)
+            return
+            
         drone_id = payload.get("drone_id")
         if not drone_id or not str(drone_id).strip():
-            return None
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        logger.info("[%s] register_drone drone_id=%s payload=%r", self.component_id, drone_id, payload)
+            logger.warning("[%s] Missing drone_id in register_drone", self.component_id)
+            return
 
+        port_id = payload.get("port_id", "")
+        battery = payload.get("battery", "unknown")
+
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.redis.hset(
-            f"drone:{drone_id}",
+            self._get_key(drone_id),
             mapping={
                 "drone_id": drone_id,
-                "model": payload.get("model", "unknown"),
-                "port_id": payload.get("port_id", ""),
-                "battery": "unknown",
-                "status": "new",
+                "port_id": port_id,
+                "battery": battery,
+                "status": "registered",
                 "registered_at": now,
                 "updated_at": now,
-            },
+            }
         )
+        logger.info("[%s] Registered drone %s on port %s", self.component_id, drone_id, port_id)
 
-        return None
+    def _handle_remove(self, message: Dict[str, Any]) -> None:
+        payload = message.get("payload")
+        
+        if not isinstance(payload, dict):
+            logger.warning("[%s] Invalid payload for remove_drone: %r", self.component_id, payload)
+            return
+            
+        drone_id = payload.get("drone_id")
+        if not drone_id or not str(drone_id).strip():
+            logger.warning("[%s] Missing drone_id in remove_drone", self.component_id)
+            return
 
-    def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        self.redis.delete(self._get_key(drone_id))
+        logger.info("[%s] Removed drone %s", self.component_id, drone_id)
+
+    def _handle_get_available(self, message: Dict[str, Any]) -> Dict[str, Any]:
         drones = []
         for key in self.redis.keys("drone:*"):
             drone = self.redis.hgetall(key)
-            if drone and drone.get("status") == "ready":
-                drones.append(drone)
-        logger.info("[%s] get_available_drones count=%s", self.component_id, len(drones))
-
-        return {
-            "drones": drones,
-            "from": self.component_id
-        }
+            if not drone:
+                continue
+                
+            battery = drone.get("battery", "unknown")
+            if battery != "unknown":
+                try:
+                    if float(battery) >= 60.0:
+                        drones.append(drone)
+                except (TypeError, ValueError):
+                    pass
+        return {"drones": drones}
 
     def _handle_get_drone(self, message: Dict[str, Any]) -> Dict[str, Any]:
         payload = message.get("payload")
+        
         if not isinstance(payload, dict):
-            return {
-                "error": "Invalid payload",
-                "from": self.component_id,
-            }
+            logger.warning("[%s] Invalid payload for get_drone: %r", self.component_id, payload)
+            return {"error": "Invalid payload"}
+
         drone_id = payload.get("drone_id")
         if not drone_id or not str(drone_id).strip():
-            return {
-                "error": "drone_id required",
-                "from": self.component_id,
-            }
-        drone = self.redis.hgetall(f"drone:{drone_id}")
-        logger.info("[%s] get_drone drone_id=%s found=%s", self.component_id, drone_id, bool(drone))
+            return {"error": "drone_id required"}
 
+        drone = self.redis.hgetall(self._get_key(drone_id))
         if not drone:
-            return {
-                "error": "Drone not found",
-                "from": self.component_id,
-            }
+            return {"error": "Drone not found"}
 
-        return {
-            **drone,
-            "success": True,
-            "from": self.component_id,
-        }
+        battery = drone.get("battery")
+        if battery and isinstance(battery, str):
+            try:
+                drone["battery"] = float(battery)
+            except (TypeError, ValueError):
+                pass
 
-    def _handle_delete_drone(self, message: Dict[str, Any]) -> None:
-        payload = message.get("payload")
-        if not isinstance(payload, dict):
-            return None
-        drone_id = payload.get("drone_id")
-        if not drone_id or not str(drone_id).strip():
-            return None
-        logger.info("[%s] delete_drone drone_id=%s", self.component_id, drone_id)
-
-        self.redis.delete(f"drone:{drone_id}")
-        return None
-
-    def _handle_charging_started(self, message: Dict[str, Any]) -> None:
-        """
-        Обновляет статус дрона после начала зарядки.
-        """
-        payload = message.get("payload")
-        if not isinstance(payload, dict):
-            return None
-        drone_id = payload.get("drone_id")
-        if not drone_id or not str(drone_id).strip():
-            return None
-        logger.info("[%s] charging_started drone_id=%s", self.component_id, drone_id)
-
-        self.redis.hset(
-            f"drone:{drone_id}",
-            mapping={
-                "status": "charging",
-            },
-        )
-
-        return None
+        return drone
 
     def _handle_update_battery(self, message: Dict[str, Any]) -> None:
-        """
-        Обновляет уровень заряда дрона.
-        """
         payload = message.get("payload")
+        
         if not isinstance(payload, dict):
-            return None
+            logger.warning("[%s] Invalid payload for update_battery: %r", self.component_id, payload)
+            return
+
         drone_id = payload.get("drone_id")
-        if not drone_id or not str(drone_id).strip():
-            return None
         battery = payload.get("battery")
+
+        if not drone_id or not str(drone_id).strip():
+            logger.warning("[%s] Missing drone_id in update_battery", self.component_id)
+            return
+            
+        if battery is None:
+            logger.warning("[%s] Missing battery in update_battery for %s", self.component_id, drone_id)
+            return
+
         try:
-            battery_num = float(battery)
+            battery_val = float(battery)
         except (TypeError, ValueError):
-            return None
-        logger.info("[%s] update_battery drone_id=%s battery=%s", self.component_id, drone_id, battery)
+            logger.warning("[%s] Invalid battery value for %s: %r", self.component_id, drone_id, battery)
+            return
 
         self.redis.hset(
-            f"drone:{drone_id}",
+            self._get_key(drone_id),
             mapping={
-                "battery": battery_num,
-                "status": "ready" if battery_num >= 100.0 else "charging",
+                "battery": battery_val,
+                "status": "ready" if battery_val >= 100.0 else "charging",
                 "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            },
+            }
         )
-        return None
+        logger.info("[%s] Battery update %s: %s%%", self.component_id, drone_id, battery_val)

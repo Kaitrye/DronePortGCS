@@ -1,23 +1,19 @@
-"""Точка входа для Orchestrator."""
+"""Точка входа для LandingManager."""
 import logging
 import os
 import signal
 import time
 
 from broker.src.bus_factory import create_system_bus
-
-from .src.orchestrator import Orchestrator
+from .src.landing_manager import LandingManager
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    component_id = os.environ.get("COMPONENT_ID", "orchestrator")
+    component_id = os.environ.get("COMPONENT_ID", "landing_manager")
+
     bus = create_system_bus(client_id=component_id)
-    component = Orchestrator(
-        component_id=component_id,
-        name=component_id,
-        bus=bus
-    )
+    component = LandingManager(component_id=component_id, name=component_id, bus=bus)
 
     def _shutdown(sig, frame):
         print(f"\n[{component_id}] Received signal {sig}, shutting down...")

@@ -12,6 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONPATH=/app
-ENV COMPONENT_ID=state_store
+ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "-m", "systems.drone_port.src.state_store"]
+CMD ["python", "-m", "systems.drone_port.src.landing_manager"]

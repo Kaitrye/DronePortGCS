@@ -1,7 +1,4 @@
-"""
-ChargingManager — логика зарядки дронов.
-"""
-import datetime
+"""ChargingManager — зарядка дронов."""
 import logging
 import threading
 import time
@@ -10,19 +7,13 @@ from typing import Dict, Any
 from sdk.base_component import BaseComponent
 from broker.src.system_bus import SystemBus
 
-from ..topics import ChargingManagerActions, ComponentTopics
-from ...drone_registry.topics import DroneRegistryActions
+from ..topics import ComponentTopics, ChargingManagerActions
 
 logger = logging.getLogger(__name__)
 
 
 class ChargingManager(BaseComponent):
-    def __init__(
-        self,
-        component_id: str,
-        name: str,
-        bus: SystemBus,
-    ):
+    def __init__(self, component_id: str, name: str, bus: SystemBus):
         super().__init__(
             component_id=component_id,
             component_type="drone_port",
@@ -30,85 +21,41 @@ class ChargingManager(BaseComponent):
             bus=bus,
         )
         self.name = name
-        self._charging_update_interval_s = 0.5
         self._charging_rate_pct_per_s = 2.0
 
     def _register_handlers(self) -> None:
         self.register_handler(ChargingManagerActions.START_CHARGING, self._handle_start_charging)
 
     def _simulate_charging(self, drone_id: str, battery: float) -> None:
-        current_battery = max(0.0, min(float(battery), 100.0))
-        logger.info("[%s] simulate_charging started drone_id=%s battery=%s", self.component_id, drone_id, current_battery)
-        last_update_ts = time.monotonic()
-        last_persisted_percent = int(current_battery)
+        current = max(0.0, min(battery, 100.0))
 
-        while current_battery < 100.0:
-            remaining = 100.0 - current_battery
-            sleep_s = min(
-                self._charging_update_interval_s,
-                remaining / self._charging_rate_pct_per_s,
-            )
-            time.sleep(sleep_s)
-
-            now = time.monotonic()
-            dt_s = now - last_update_ts
-            last_update_ts = now
-            # In tests or under scheduler jitter, monotonic time may advance
-            # less than the requested sleep interval. Use the intended step so
-            # charging progress still moves forward predictably.
-            if dt_s < sleep_s:
-                dt_s = sleep_s
-
-            current_battery = min(
-                100.0,
-                current_battery + self._charging_rate_pct_per_s * dt_s,
-            )
-            current_battery = round(current_battery, 2)
-            current_percent = int(current_battery)
-
-            if current_battery < 100.0 and current_percent == last_persisted_percent:
-                continue
-
-            persisted_battery = 100.0 if current_battery >= 100.0 else float(current_percent)
-            last_persisted_percent = int(persisted_battery)
+        while current < 100.0:
+            time.sleep(0.5)
+            current = min(100.0, current + self._charging_rate_pct_per_s * 0.5)
+            current = round(current, 2)
 
             self.bus.publish(
                 ComponentTopics.DRONE_REGISTRY,
                 {
-                    "action": DroneRegistryActions.UPDATE_BATTERY,
-                    "payload": {
-                        "drone_id": drone_id,
-                        "battery": persisted_battery,
-                    },
+                    "action": "update_battery",
+                    "payload": {"drone_id": drone_id, "battery": current},
                     "sender": self.component_id,
                 }
             )
-            logger.info("[%s] simulate_charging update drone_id=%s battery=%s", self.component_id, drone_id, persisted_battery)
+            logger.info("[%s] Charging %s: %s%%", self.component_id, drone_id, current)
 
     def _handle_start_charging(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Запуск зарядки дрона.
-        """
         payload = message.get("payload", {})
         drone_id = payload.get("drone_id")
         battery = payload.get("battery", 0.0)
-        logger.info("[%s] start_charging drone_id=%s battery=%s", self.component_id, drone_id, battery)
 
-        self.bus.publish(
-            ComponentTopics.DRONE_REGISTRY,
-            {
-                "action": DroneRegistryActions.CHARGING_STARTED,
-                "payload": {
-                    "drone_id": drone_id,
-                },
-                "sender": self.component_id,
-            }
-        )
+        if not drone_id:
+            return {"error": "drone_id required"}
 
+        logger.info("[%s] Start charging %s from %s%%", self.component_id, drone_id, battery)
         threading.Thread(
             target=self._simulate_charging,
             args=(drone_id, battery),
             daemon=True,
         ).start()
-
-        return None
+        return {"started": True, "drone_id": drone_id}

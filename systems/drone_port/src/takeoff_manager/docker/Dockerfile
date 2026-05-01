@@ -12,8 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONPATH=/app
-ENV COMPONENT_ID=drone_manager
+ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8081
-
-CMD ["python", "-m", "systems.drone_port.src.drone_manager"]
+CMD ["python", "-m", "systems.drone_port.src.landing_manager"]
