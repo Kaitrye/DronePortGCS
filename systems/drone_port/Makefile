@@ -31,7 +31,7 @@ docker-up: prepare
 docker-up-no-broker: prepare
 	@set -a && . $(GENERATED)/.env && set +a && \
 		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-mqtt} up -d --build --no-deps \
-		redis state_store port_manager drone_registry charging_manager drone_manager orchestrator gateway
+		redis port_manager drone_registry charging_manager gateway landing_manager takeoff_manager
 
 docker-down:
 	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null
@@ -39,7 +39,7 @@ docker-down:
 
 docker-down-no-broker:
 	-@set -a && . $(GENERATED)/.env && set +a && \
-		$(DOCKER_COMPOSE) rm -sf state_store port_manager drone_registry charging_manager drone_manager orchestrator gateway redis 2>/dev/null
+		$(DOCKER_COMPOSE) rm -sf redis port_manager drone_registry charging_manager gateway landing_manager takeoff_manager 2>/dev/null
 
 docker-logs:
 	@set -a && . $(GENERATED)/.env && set +a && \
