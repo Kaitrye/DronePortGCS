@@ -31,10 +31,10 @@ def test_landing_registers_drone_after_port_assignment(mock_bus):
     manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
     mock_bus.request.return_value = {"success": True, "payload": {"port_id": "P-01"}}
 
-    result = manager._handle_landing({"payload": {"drone_id": "DR-1", "model": "QuadroX"}})
+    result = manager._handle_landing({"payload": {"drone_id": "DR-1", "model": "QuadroX", "battery": 100}})
 
     assert result == {"approved": True, "port_id": "P-01", "drone_id": "DR-1", "from": "drone_manager"}
-    assert mock_bus.publish.call_args.args == (
+    assert mock_bus.publish.call_args_list[0].args == (
         RegistryTopics.DRONE_REGISTRY,
         {
             "action": DroneRegistryActions.REGISTER_DRONE,
@@ -194,6 +194,17 @@ def test_landing_with_partial_battery_starts_charging(mock_bus):
     )
 
 
+@pytest.mark.parametrize("raw_battery", [None, "", "unknown", "oops"])
+def test_landing_returns_error_when_battery_is_unknown(mock_bus, raw_battery):
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    result = manager._handle_landing({"payload": {"drone_id": "DR-UNKNOWN", "battery": raw_battery}})
+
+    assert result == {"error": "Battery level is unknown", "from": "drone_manager"}
+    assert mock_bus.request.call_count == 0
+    assert mock_bus.publish.call_count == 0
+
+
 def test_landing_with_full_battery_does_not_start_charging(mock_bus):
     manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
     mock_bus.request.return_value = {"success": True, "payload": {"port_id": "P-04"}}
@@ -311,7 +322,7 @@ def test_landing_returns_no_free_ports_when_request_fails(mock_bus):
     manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
     mock_bus.request.return_value = None
 
-    result = manager._handle_landing({"payload": {"drone_id": "DR-404"}})
+    result = manager._handle_landing({"payload": {"drone_id": "DR-404", "battery": 100}})
 
     assert result == {"error": "No free ports", "from": "drone_manager"}
 

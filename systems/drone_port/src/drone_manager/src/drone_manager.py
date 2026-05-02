@@ -95,6 +95,9 @@ class DroneManager(BaseComponent):
 
         model = payload.get("model", "unknown")
         battery = _parse_battery_value(payload.get("battery"))
+        if battery is None:
+            return {"error": "Battery level is unknown", "from": self.component_id}
+
         logger.info(
             "[%s] request_landing drone_id=%s model=%s battery=%s sender=%s",
             self.component_id,
@@ -132,11 +135,23 @@ class DroneManager(BaseComponent):
                 }
             )
 
-            if battery is not None:
+            self.bus.publish(
+                RegistryTopics.DRONE_REGISTRY,
+                {
+                    "action": DroneRegistryActions.UPDATE_BATTERY,
+                    "payload": {
+                        "drone_id": drone_id,
+                        "battery": battery,
+                    },
+                    "sender": self.component_id,
+                }
+            )
+
+            if battery < 100.0:
                 self.bus.publish(
-                    RegistryTopics.DRONE_REGISTRY,
+                    ChargingTopics.CHARGING_MANAGER,
                     {
-                        "action": DroneRegistryActions.UPDATE_BATTERY,
+                        "action": ChargingManagerActions.START_CHARGING,
                         "payload": {
                             "drone_id": drone_id,
                             "battery": battery,
@@ -144,19 +159,6 @@ class DroneManager(BaseComponent):
                         "sender": self.component_id,
                     }
                 )
-
-                if battery < 100.0:
-                    self.bus.publish(
-                        ChargingTopics.CHARGING_MANAGER,
-                        {
-                            "action": ChargingManagerActions.START_CHARGING,
-                            "payload": {
-                                "drone_id": drone_id,
-                                "battery": battery,
-                            },
-                            "sender": self.component_id,
-                        }
-                    )
 
             port_id = response_payload.get("port_id")
             logger.info("[%s] request_landing approved drone_id=%s port_id=%s", self.component_id, drone_id, port_id)
