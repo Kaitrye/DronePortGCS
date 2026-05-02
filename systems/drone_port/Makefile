@@ -16,6 +16,7 @@ help:
 	@echo "make docker-clean      - Очистка docker ресурсов системы"
 	@echo "make unit-test         - Unit-тесты DronePort с coverage"
 	@echo "make unit-test-cov     - Unit-тесты DronePort с подробным coverage-отчётом"
+	@echo "make unit-test-with-coverage - Unit тесты DronePort с HTML coverage отчетом"
 	@echo "make integration-test  - Интеграционные тесты DronePort с поднятием стека"
 	@echo "make integration-test-no-up - Интеграционные тесты DronePort без поднятия стека"
 	@echo "make tests             - Все тесты DronePort"
@@ -55,6 +56,15 @@ unit-test:
 unit-test-cov:
 	@$(UNIT_PYTEST) --cov=systems.drone_port --cov-config=systems/drone_port/.coveragerc --cov-report=term-missing --cov-report=xml:systems/drone_port/.generated/unit-coverage.xml
 
+unit-test-with-coverage:
+	@mkdir -p ../../artifacts/coverage-html
+	@cd ../.. && PYTHONPATH=. PIPENV_PIPFILE=config/Pipfile pipenv run pytest \
+		systems/drone_port/tests/unit \
+		--cov=systems.drone_port \
+		--cov-config=systems/drone_port/.coveragerc \
+		--cov-report=html:artifacts/coverage-html \
+		--cov-report=term
+	@echo "✅ Coverage HTML report: ../../artifacts/coverage-html/index.html"
 integration-test: docker-up
 	@echo "Waiting for broker and drone_port components..."
 	@sleep 30
