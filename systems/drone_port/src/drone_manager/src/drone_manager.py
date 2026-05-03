@@ -89,10 +89,20 @@ class DroneManager(BaseComponent):
         if payload is None:
             payload = {}
         elif not isinstance(payload, dict):
+            self._log_security(
+                "warning", "request_landing.invalid",
+                "Invalid landing payload",
+                details={"sender": message.get("sender")},
+            )
             return {"error": "Invalid payload", "from": self.component_id}
 
         drone_id = payload.get("drone_id")
         if not drone_id or not str(drone_id).strip():
+            self._log_security(
+                "warning", "request_landing.invalid",
+                "Missing drone_id in landing request",
+                details={"sender": message.get("sender")},
+            )
             return {"error": "drone_id required", "from": self.component_id}
 
         model = payload.get("model", "unknown")
@@ -104,6 +114,11 @@ class DroneManager(BaseComponent):
             model,
             battery,
             message.get("sender"),
+        )
+        self._log_security(
+            "info", "request_landing.received",
+            f"Landing request received for drone {drone_id}",
+            details={"drone_id": drone_id, "model": model, "battery": battery, "sender": message.get("sender")},
         )
 
         response = self.bus.request(
@@ -162,6 +177,11 @@ class DroneManager(BaseComponent):
 
             port_id = response_payload.get("port_id")
             logger.info("[%s] request_landing approved drone_id=%s port_id=%s", self.component_id, drone_id, port_id)
+            self._log_security(
+                "notice", "request_landing.approved",
+                f"Landing approved for drone {drone_id} on port {port_id}",
+                details={"drone_id": drone_id, "port_id": port_id, "model": model, "battery": battery},
+            )
             return {
                 "approved": True,
                 "port_id": port_id,
@@ -169,6 +189,11 @@ class DroneManager(BaseComponent):
                 "from": self.component_id,
             }
 
+        self._log_security(
+            "warning", "request_landing.no_free_ports",
+            f"Landing denied for drone {drone_id}: no free ports",
+            details={"drone_id": drone_id, "model": model, "battery": battery},
+        )
         return {
             "error": "No free ports",
             "from": self.component_id
@@ -180,10 +205,20 @@ class DroneManager(BaseComponent):
         """
         payload = message.get("payload")
         if not isinstance(payload, dict):
+            self._log_security(
+                "warning", "request_takeoff.invalid",
+                "Invalid takeoff payload",
+                details={"sender": message.get("sender")},
+            )
             return {"error": "Invalid payload", "from": self.component_id}
 
         drone_id = payload.get("drone_id")
         if not drone_id or not str(drone_id).strip():
+            self._log_security(
+                "warning", "request_takeoff.invalid",
+                "Missing drone_id in takeoff request",
+                details={"sender": message.get("sender")},
+            )
             return {"error": "drone_id required", "from": self.component_id}
 
         logger.info(
@@ -192,6 +227,11 @@ class DroneManager(BaseComponent):
             drone_id,
             payload,
             message.get("sender"),
+        )
+        self._log_security(
+            "info", "request_takeoff.received",
+            f"Takeoff request received for drone {drone_id}",
+            details={"drone_id": drone_id, "sender": message.get("sender")},
         )
         
         port_response = self.bus.request(
@@ -227,6 +267,11 @@ class DroneManager(BaseComponent):
             port_id = response_payload.get("port_id") or (drone_port or {}).get("port_id")
 
             if battery is None:
+                self._log_security(
+                    "warning", "request_takeoff.unknown_battery",
+                    f"Takeoff denied for drone {drone_id}: battery unknown",
+                    details={"drone_id": drone_id},
+                )
                 return {
                     "error": "Battery level is unknown",
                     "from": self.component_id,
@@ -267,6 +312,11 @@ class DroneManager(BaseComponent):
                     },
                 )
 
+                self._log_security(
+                    "notice", "request_takeoff.approved",
+                    f"Takeoff approved for drone {drone_id} from port {port_id}",
+                    details={"drone_id": drone_id, "port_id": port_id, "battery": battery},
+                )
                 return {
                     "approved": True,
                     "battery": battery,
@@ -279,11 +329,21 @@ class DroneManager(BaseComponent):
                     "from": self.component_id,
                 }
 
+            self._log_security(
+                "warning", "request_takeoff.low_battery",
+                f"Takeoff denied for drone {drone_id}: battery {battery}% below 60%",
+                details={"drone_id": drone_id, "battery": battery},
+            )
             return {
                 "error": "Not enough battery for takeoff",
                 "from": self.component_id
             }
 
+        self._log_security(
+            "error", "request_takeoff.registry_failed",
+            f"Takeoff denied for drone {drone_id}: registry lookup failed",
+            details={"drone_id": drone_id},
+        )
         return {
             "error": "Failed to get drone information",
             "from": self.component_id

@@ -37,6 +37,11 @@ class ChargingManager(BaseComponent):
     def _simulate_charging(self, drone_id: str, battery: float) -> None:
         current_battery = max(0.0, min(float(battery), 100.0))
         logger.info("[%s] simulate_charging started drone_id=%s battery=%s", self.component_id, drone_id, current_battery)
+        self._log_security(
+            "notice", "charging.started",
+            f"Charging started for drone {drone_id} at {current_battery}%",
+            details={"drone_id": drone_id, "battery": current_battery},
+        )
         last_update_ts = time.monotonic()
         last_persisted_percent = int(current_battery)
 
@@ -83,6 +88,13 @@ class ChargingManager(BaseComponent):
             )
             logger.info("[%s] simulate_charging update drone_id=%s battery=%s", self.component_id, drone_id, persisted_battery)
 
+            if persisted_battery >= 100.0:
+                self._log_security(
+                    "notice", "charging.completed",
+                    f"Charging completed for drone {drone_id}",
+                    details={"drone_id": drone_id},
+                )
+
     def _handle_start_charging(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Запуск зарядки дрона.
@@ -91,6 +103,11 @@ class ChargingManager(BaseComponent):
         drone_id = payload.get("drone_id")
         battery = payload.get("battery", 0.0)
         logger.info("[%s] start_charging drone_id=%s battery=%s", self.component_id, drone_id, battery)
+        self._log_security(
+            "info", "charging.start_requested",
+            f"Charging requested for drone {drone_id}",
+            details={"drone_id": drone_id, "battery": battery},
+        )
 
         self.bus.publish(
             ComponentTopics.DRONE_REGISTRY,

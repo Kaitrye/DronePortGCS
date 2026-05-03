@@ -17,6 +17,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=state_store
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -39,6 +40,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=orchestrator
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -59,6 +61,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=drone_manager
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -79,6 +82,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=drone_registry
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -101,6 +105,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=port_manager
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -123,6 +128,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=charging_manager
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -155,10 +161,18 @@ services:
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S=${SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S:-10.0}
+      - SECURITY_JOURNAL_FILE_PATH=${SECURITY_JOURNAL_FILE_PATH:-/var/log/drones/security_journal.ndjson}
+      - SECURITY_JOURNAL_MIN_SEVERITY=${SECURITY_JOURNAL_MIN_SEVERITY:-info}
+      - SECURITY_JOURNAL_SERVICE_ID=${DRONE_PORT_SERVICE_ID:-1}
       - PYTHONUNBUFFERED=1
+    volumes:
+      - drone_port_journal:/var/log/drones
     networks:
       - drones_net
     restart: unless-stopped
+
+volumes:
+  drone_port_journal:
 
 networks:
   drones_net:

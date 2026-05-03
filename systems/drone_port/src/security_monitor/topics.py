@@ -20,6 +20,7 @@ class SecurityMonitorActions:
     PROXY_PUBLISH = "proxy_publish"
     LIST_POLICIES = "list_policies"
     SITL_HOME_PUBLISH = "sitl_home_publish"
+    LOG_EVENT = "log_event"
 
 
 __all__ = [

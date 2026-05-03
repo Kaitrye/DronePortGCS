@@ -368,3 +368,84 @@ def test_takeoff_returns_error_when_registry_request_fails(mock_bus):
     result = manager._handle_takeoff({"payload": {"drone_id": "DR-MISS"}})
 
     assert result == {"error": "Failed to get drone information", "from": "drone_manager"}
+
+
+# -------------------------
+# Журнал безопасности (_log_security)
+# -------------------------
+
+def _security_log_messages(mock_bus, monitor_topic):
+    return [
+        msg for topic, msg in (call.args for call in mock_bus.publish.call_args_list)
+        if topic == monitor_topic and msg.get("action") == SecurityMonitorActions.LOG_EVENT
+    ]
+
+
+def test_landing_no_free_ports_logs_warning(mock_bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", SecurityMonitorTopics.DRONE_PORT)
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+    mock_bus.request.return_value = None
+
+    manager._handle_landing({"payload": {"drone_id": "DR-1"}})
+
+    logs = _security_log_messages(mock_bus, SecurityMonitorTopics.DRONE_PORT)
+    by_action = {m["payload"]["source_action"]: m["payload"] for m in logs}
+    assert "request_landing.received" in by_action
+    assert by_action["request_landing.received"]["severity"] == "info"
+    assert "request_landing.no_free_ports" in by_action
+    assert by_action["request_landing.no_free_ports"]["severity"] == "warning"
+    assert by_action["request_landing.no_free_ports"]["details"]["drone_id"] == "DR-1"
+
+
+def test_landing_approved_logs_notice(mock_bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", SecurityMonitorTopics.DRONE_PORT)
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+    mock_bus.request.return_value = {"success": True, "payload": {"port_id": "P-01"}}
+
+    manager._handle_landing({"payload": {"drone_id": "DR-1", "model": "QuadroX"}})
+
+    logs = _security_log_messages(mock_bus, SecurityMonitorTopics.DRONE_PORT)
+    assert any(
+        m["payload"]["severity"] == "notice" and m["payload"]["source_action"] == "request_landing.approved"
+        for m in logs
+    )
+
+
+def test_takeoff_low_battery_logs_warning(mock_bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", SecurityMonitorTopics.DRONE_PORT)
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    def request_side_effect(topic, message, timeout=None):
+        if message["action"] == PortManagerActions.GET_PORT_STATUS:
+            return {"success": True, "payload": {"ports": []}}
+        return {"success": True, "payload": {"battery": 30.0, "port_id": "P-01"}}
+
+    mock_bus.request.side_effect = request_side_effect
+
+    manager._handle_takeoff({"payload": {"drone_id": "DR-LOW"}})
+
+    logs = _security_log_messages(mock_bus, SecurityMonitorTopics.DRONE_PORT)
+    assert any(
+        m["payload"]["severity"] == "warning" and m["payload"]["source_action"] == "request_takeoff.low_battery"
+        for m in logs
+    )
+
+
+def test_takeoff_registry_failed_logs_error(mock_bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", SecurityMonitorTopics.DRONE_PORT)
+    manager = DroneManager(component_id="drone_manager", name="DroneManager", bus=mock_bus)
+
+    def request_side_effect(topic, message, timeout=None):
+        if message["action"] == PortManagerActions.GET_PORT_STATUS:
+            return {"success": True, "payload": {"ports": []}}
+        return None
+
+    mock_bus.request.side_effect = request_side_effect
+
+    manager._handle_takeoff({"payload": {"drone_id": "DR-MISS"}})
+
+    logs = _security_log_messages(mock_bus, SecurityMonitorTopics.DRONE_PORT)
+    assert any(
+        m["payload"]["severity"] == "error" and m["payload"]["source_action"] == "request_takeoff.registry_failed"
+        for m in logs
+    )

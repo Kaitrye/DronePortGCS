@@ -18,6 +18,7 @@ class SecurityMonitorActions:
     PROXY_REQUEST = "proxy_request"
     PROXY_PUBLISH = "proxy_publish"
     LIST_POLICIES = "list_policies"
+    LOG_EVENT = "log_event"
 
 
 __all__ = [

@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Set, Tuple
 
 from broker.src.system_bus import SystemBus
 from sdk.base_component import BaseComponent
+from sdk.security_journal import JournalRecorder
 from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics
 from systems.drone_port.src.orchestrator.topics import ComponentTopics as OrchestratorTopics
 from systems.drone_port.src.security_monitor import config
@@ -25,9 +26,17 @@ class SecurityMonitorComponent(BaseComponent):
         bus: SystemBus,
         topic: str = "",
         policies: Optional[Set[PolicyKey]] = None,
+        journal: Optional[JournalRecorder] = None,
     ):
         self._policies = set(policies) if policies is not None else config.load_policies_from_env()
         self._audit_topic = config.audit_topic()
+        self._journal = journal or JournalRecorder(
+            file_path=config.journal_file_path(),
+            min_severity=config.journal_min_severity(),
+            service=config.service_name(),
+            service_id=config.service_id(),
+            logger=logger,
+        )
         super().__init__(
             component_id=component_id,
             component_type="drone_port_security_monitor",
@@ -39,6 +48,7 @@ class SecurityMonitorComponent(BaseComponent):
         self.register_handler(SecurityMonitorActions.PROXY_REQUEST, self._handle_proxy_request)
         self.register_handler(SecurityMonitorActions.PROXY_PUBLISH, self._handle_proxy_publish)
         self.register_handler(SecurityMonitorActions.LIST_POLICIES, self._handle_list_policies)
+        self.register_handler(SecurityMonitorActions.LOG_EVENT, self._handle_log_event)
 
     def _extract_target(self, payload: Dict[str, Any]) -> Optional[Tuple[str, str, Dict[str, Any]]]:
         target = payload.get("target") or {}
@@ -54,8 +64,23 @@ class SecurityMonitorComponent(BaseComponent):
     def _is_allowed(self, sender_id: str, target_topic: str, target_action: str) -> bool:
         return (sender_id, target_topic, target_action) in self._policies
 
+    def _severity_for_audit(self, action: str) -> str:
+        if action.endswith(".denied"):
+            return "critical"
+        if action.endswith(".invalid"):
+            return "alert"
+        if action.endswith(".no_response"):
+            return "error"
+        return "info"
+
     def _audit(self, action: str, source: str, details: Dict[str, Any]) -> None:
         logger.info("[%s] %s source=%s details=%r", self.component_id, action, source, details)
+        self._log_self(
+            severity=self._severity_for_audit(action),
+            source_action=action,
+            message=f"{action} source={source}",
+            details={"source": source, **details},
+        )
         if not self._audit_topic:
             return
 
@@ -70,6 +95,38 @@ class SecurityMonitorComponent(BaseComponent):
                 },
             },
         )
+
+    def _log_self(
+        self,
+        *,
+        severity: str,
+        source_action: str,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self._journal.log(
+            severity=severity,
+            source_sender=self.topic,
+            source_component=self.component_type,
+            source_action=source_action,
+            message=message,
+            details=details or {},
+        )
+
+    def _handle_log_event(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        payload = message.get("payload") or {}
+        sender = str(message.get("sender") or "").strip()
+        if sender == self.topic:
+            return None
+        self._journal.log(
+            severity=str(payload.get("severity", "info")),
+            source_sender=sender,
+            source_component=str(payload.get("source_component") or ""),
+            source_action=str(payload.get("source_action") or ""),
+            message=str(payload.get("message") or ""),
+            details=payload.get("details") or {},
+        )
+        return None
 
     def _route_request(self, target_topic: str, target_action: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         timeout = config.proxy_request_timeout_s()

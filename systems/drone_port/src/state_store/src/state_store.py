@@ -67,13 +67,26 @@ class StateStore(BaseComponent):
         drone_id = payload.get("drone_id")
         status = payload.get("status")
         logger.info("[%s] update_port port_id=%s drone_id=%s status=%s", self.component_id, port_id, drone_id, status)
-
-        self.redis.hset(
-            f"port:{port_id}",
-            mapping={
-                "drone_id": drone_id or "",
-                "status": status,
-            },
+        self._log_security(
+            "info", "state_store.update_port.received",
+            f"Port {port_id} update to status={status}",
+            details={"port_id": port_id, "drone_id": drone_id, "status": status},
         )
+
+        try:
+            self.redis.hset(
+                f"port:{port_id}",
+                mapping={
+                    "drone_id": drone_id or "",
+                    "status": status,
+                },
+            )
+        except Exception as exc:
+            self._log_security(
+                "error", "state_store.redis_error",
+                f"Redis update_port failed for port {port_id}: {exc}",
+                details={"port_id": port_id, "drone_id": drone_id, "status": status},
+            )
+            raise
 
         return None

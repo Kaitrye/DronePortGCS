@@ -37,6 +37,11 @@ class Orchestrator(BaseComponent):
 
     def _handle_get_available_drones(self, message: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("[%s] get_available_drones request=%r", self.component_id, message)
+        self._log_security(
+            "info", "get_available_drones.received",
+            "Get available drones request received",
+            details={"sender": message.get("sender")},
+        )
         response = self.bus.request(
             RegistryTopics.DRONE_REGISTRY,
             {
@@ -61,6 +66,11 @@ class Orchestrator(BaseComponent):
                 "from": self.component_id,
             }
 
+        self._log_security(
+            "error", "get_available_drones.registry_failed",
+            "Registry lookup for available drones failed",
+            details={"sender": message.get("sender")},
+        )
         return {
             "error": "Failed to get available drones",
             "from": self.component_id,

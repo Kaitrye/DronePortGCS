@@ -120,6 +120,11 @@ class DroneManagerComponent(BaseComponent):
             drone_id,
             correlation_id,
         )
+        self._log_security(
+            "info", "mission_upload.received",
+            f"Mission upload received: mission={mission_id}, drone={drone_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
+        )
 
         upload_response = self._proxy_request_drone(
             DroneTopics.MISSION_HANDLER,
@@ -132,6 +137,18 @@ class DroneManagerComponent(BaseComponent):
             correlation_id=correlation_id,
         )
         logger.info("[%s] mission.upload drone response=%r", self.component_id, upload_response)
+        if upload_response is None:
+            self._log_security(
+                "error", "mission_upload.no_response",
+                f"Mission upload to drone {drone_id} produced no response",
+                details={"mission_id": mission_id, "drone_id": drone_id},
+            )
+        else:
+            self._log_security(
+                "notice", "mission_upload.sent",
+                f"Mission {mission_id} uploaded to drone {drone_id}",
+                details={"mission_id": mission_id, "drone_id": drone_id},
+            )
 
         mission_update_message = {
             "action": MissionStoreActions.UPDATE_MISSION,
@@ -273,6 +290,11 @@ class DroneManagerComponent(BaseComponent):
             drone_id,
             correlation_id,
         )
+        self._log_security(
+            "info", "mission_start.received",
+            f"Mission start received: mission={mission_id}, drone={drone_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
+        )
 
         start_response = self._proxy_request_drone(
             DroneTopics.AUTOPILOT,
@@ -291,6 +313,11 @@ class DroneManagerComponent(BaseComponent):
                 mission_id,
                 drone_id,
                 start_payload,
+            )
+            self._log_security(
+                "error", "mission_start.failed",
+                f"Mission {mission_id} failed to start on drone {drone_id}",
+                details={"mission_id": mission_id, "drone_id": drone_id},
             )
             return {
                 "ok": False,
@@ -338,6 +365,11 @@ class DroneManagerComponent(BaseComponent):
             self._start_telemetry_polling(drone_id)
             logger.info("[%s] mission.start started telemetry polling drone_id=%s", self.component_id, drone_id)
 
+        self._log_security(
+            "notice", "mission_start.approved",
+            f"Mission {mission_id} started on drone {drone_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
+        )
         return {
             "ok": True,
             "mission_id": mission_id,

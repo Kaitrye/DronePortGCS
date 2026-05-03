@@ -18,6 +18,7 @@ services:
     command: ["python", "-m", "systems.gcs.src.mission_store"]
     environment:
       - COMPONENT_ID=gcs_mission_store
+      - SECURITY_MONITOR_TOPIC=${GCS_MONITOR_TOPIC:-systems.gcs}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -44,6 +45,7 @@ services:
     command: ["python", "-m", "systems.gcs.src.drone_store"]
     environment:
       - COMPONENT_ID=gcs_drone_store
+      - SECURITY_MONITOR_TOPIC=${GCS_MONITOR_TOPIC:-systems.gcs}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -69,6 +71,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_mission_converter
+      - SECURITY_MONITOR_TOPIC=${GCS_MONITOR_TOPIC:-systems.gcs}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -93,6 +96,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_orchestrator
+      - SECURITY_MONITOR_TOPIC=${GCS_MONITOR_TOPIC:-systems.gcs}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -112,6 +116,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_path_planner
+      - SECURITY_MONITOR_TOPIC=${GCS_MONITOR_TOPIC:-systems.gcs}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -136,6 +141,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=gcs_drone_manager
+      - SECURITY_MONITOR_TOPIC=${GCS_MONITOR_TOPIC:-systems.gcs}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
@@ -170,10 +176,18 @@ services:
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S=${SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S:-10.0}
+      - SECURITY_JOURNAL_FILE_PATH=${SECURITY_JOURNAL_FILE_PATH:-/var/log/drones/security_journal.ndjson}
+      - SECURITY_JOURNAL_MIN_SEVERITY=${SECURITY_JOURNAL_MIN_SEVERITY:-info}
+      - SECURITY_JOURNAL_SERVICE_ID=${GCS_SERVICE_ID:-1}
       - PYTHONUNBUFFERED=1
+    volumes:
+      - gcs_journal:/var/log/drones
     networks:
       - drones_net
     restart: unless-stopped
+
+volumes:
+  gcs_journal:
 
 networks:
   drones_net:

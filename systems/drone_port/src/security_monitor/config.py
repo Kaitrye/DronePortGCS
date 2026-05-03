@@ -33,6 +33,34 @@ def proxy_request_timeout_s() -> float:
     return _get_float("SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S", 10.0, min_value=0.1)
 
 
+def journal_file_path() -> str:
+    return (
+        os.environ.get("SECURITY_JOURNAL_FILE_PATH")
+        or "/var/log/drones/security_journal.ndjson"
+    ).strip()
+
+
+def journal_min_severity() -> str:
+    return (os.environ.get("SECURITY_JOURNAL_MIN_SEVERITY") or "info").strip().lower()
+
+
+def service_name() -> str:
+    return "dronePort"
+
+
+def service_id() -> int:
+    raw = os.environ.get("SECURITY_JOURNAL_SERVICE_ID")
+    if raw is None or str(raw).strip() == "":
+        return 1
+    try:
+        value = int(raw)
+    except ValueError:
+        return 1
+    if value < 1 or value > 1000:
+        return 1
+    return value
+
+
 def _normalize_policies(raw: Iterable[dict]) -> Set[PolicyKey]:
     parsed: Set[PolicyKey] = set()
     for item in raw:

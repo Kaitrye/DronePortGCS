@@ -83,6 +83,11 @@ class DroneRegistry(BaseComponent):
             return None
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         logger.info("[%s] register_drone drone_id=%s payload=%r", self.component_id, drone_id, payload)
+        self._log_security(
+            "info", "registry.register_requested",
+            f"Drone registration request for {drone_id}",
+            details={"drone_id": drone_id, "model": payload.get("model"), "port_id": payload.get("port_id")},
+        )
 
         self.redis.hset(
             f"drone:{drone_id}",
@@ -95,6 +100,11 @@ class DroneRegistry(BaseComponent):
                 "registered_at": now,
                 "updated_at": now,
             },
+        )
+        self._log_security(
+            "notice", "registry.drone_registered",
+            f"Drone {drone_id} registered",
+            details={"drone_id": drone_id, "model": payload.get("model"), "port_id": payload.get("port_id")},
         )
 
         return None
@@ -189,6 +199,13 @@ class DroneRegistry(BaseComponent):
         except (TypeError, ValueError):
             return None
         logger.info("[%s] update_battery drone_id=%s battery=%s", self.component_id, drone_id, battery)
+
+        if not self.redis.hgetall(f"drone:{drone_id}"):
+            self._log_security(
+                "warning", "registry.unknown_drone",
+                f"Battery update for unknown drone {drone_id}",
+                details={"drone_id": drone_id, "battery": battery_num},
+            )
 
         self.redis.hset(
             f"drone:{drone_id}",
