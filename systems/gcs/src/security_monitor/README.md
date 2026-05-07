@@ -54,12 +54,38 @@ Helper `_log_security` публикует одно сообщение `action="l
 
 ## Env-переменные
 
+### Журнал (NDJSON)
+
 | Переменная                          | По умолчанию                                  | Назначение |
 |-------------------------------------|------------------------------------------------|------------|
 | `SECURITY_JOURNAL_FILE_PATH`        | `/var/log/drones/security_journal.ndjson`     | путь к NDJSON-файлу |
 | `SECURITY_JOURNAL_MIN_SEVERITY`     | `info`                                         | минимальный уровень для записи |
 | `SECURITY_JOURNAL_SERVICE_ID`       | `1`                                            | id экземпляра НУС (1..1000) |
 | `SECURITY_MONITOR_TOPIC` *(в источниках)* | `systems.gcs`                            | куда `_log_security` публикует |
+
+### Отправка в Инфопанель 
+
+Если `INFOPANEL_URL` или `INFOPANEL_API_KEY` пусты - отправка отключена, журнал работает только локально.
+
+| Переменная                          | По умолчанию                                  | Назначение |
+|-------------------------------------|------------------------------------------------|------------|
+| `INFOPANEL_URL`                     | (пусто) — в `docker/example.env`: `https://droneanalytics.ourpaint.ru/api/log/event` | endpoint Инфопанели |
+| `INFOPANEL_API_KEY`                 | (пусто)                                        | ключ для `X-API-Key`. В compose читается из `INFOPANEL_GCS_API_KEY` |
+| `INFOPANEL_BATCH_SIZE`              | `50` (≤100)                                    | макс. размер батча |
+| `INFOPANEL_FLUSH_INTERVAL_S`        | `5.0`                                          | период отправки |
+| `INFOPANEL_MAX_RETRIES`             | `5`                                            | ретраев на 5xx с экспоненциальным backoff |
+| `INFOPANEL_VERIFY_TLS`              | `true`                                         | проверять TLS-сертификат (Let's Encrypt — `true`) |
+
+**Где хранить ключ.** Реальный ключ кладётся в `docker/.env` (он в `.gitignore`):
+
+```
+INFOPANEL_DRONE_PORT_API_KEY=<ключ из чата>
+INFOPANEL_GCS_API_KEY=<второй ключ>
+```
+
+В коммит попадает только `docker/example.env` с пустыми значениями.
+
+**Поведение при недоступности.** Записи всегда сначала пишутся в локальный NDJSON, потом ставятся в очередь на отправку. Если Инфопанель лежит — фоновый поток ретраит с экспоненциальным backoff. На 4xx (плохой ключ/payload) ретраев нет. При переполнении очереди (по умолчанию 10000) дропается **самая старая** запись — критические события доезжают, а полная история всё равно есть в NDJSON.
 
 ## Smoke-тест
 

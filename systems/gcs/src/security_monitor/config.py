@@ -61,6 +61,43 @@ def service_id() -> int:
     return value
 
 
+def infopanel_url() -> str:
+    return (os.environ.get("INFOPANEL_URL") or "").strip()
+
+
+def infopanel_api_key() -> str:
+    return (os.environ.get("INFOPANEL_API_KEY") or "").strip()
+
+
+def infopanel_batch_size() -> int:
+    raw = (os.environ.get("INFOPANEL_BATCH_SIZE") or "").strip()
+    if not raw:
+        return 50
+    try:
+        value = int(raw)
+    except ValueError:
+        return 50
+    return max(1, min(value, 100))
+
+
+def infopanel_flush_interval_s() -> float:
+    return _get_float("INFOPANEL_FLUSH_INTERVAL_S", 5.0, min_value=0.1)
+
+
+def infopanel_max_retries() -> int:
+    raw = (os.environ.get("INFOPANEL_MAX_RETRIES") or "").strip()
+    if not raw:
+        return 5
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 5
+
+
+def infopanel_verify_tls() -> bool:
+    return (os.environ.get("INFOPANEL_VERIFY_TLS") or "true").strip().lower() != "false"
+
+
 def _normalize_policies(raw: Iterable[dict]) -> Set[PolicyKey]:
     parsed: Set[PolicyKey] = set()
     for item in raw:

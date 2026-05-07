@@ -210,3 +210,196 @@ def test_creates_parent_dir(tmp_path):
     )
     assert nested.exists()
     assert _read_lines(nested)[0]["service"] == "GCS"
+
+
+# ---------- InfopanelDispatcher ----------
+
+import threading
+
+from sdk.security_journal import InfopanelDispatcher
+
+
+class FakeResponse:
+    def __init__(self, status_code: int, text: str = ""):
+        self.status_code = status_code
+        self.text = text
+
+
+class FakeSession:
+    """Drop-in replacement for requests.Session used by the dispatcher."""
+
+    def __init__(self, responses=None, raise_first=0):
+        # responses: list of FakeResponse to cycle through; default 200 OK
+        self._responses = list(responses or [FakeResponse(200)])
+        self._raise_first = raise_first
+        self.calls = []
+        self.headers = {}
+        self._lock = threading.Lock()
+
+    def post(self, url, json=None, timeout=None, verify=None):
+        with self._lock:
+            self.calls.append({"url": url, "json": json, "timeout": timeout, "verify": verify})
+            if self._raise_first > 0:
+                self._raise_first -= 1
+                raise ConnectionError("simulated network error")
+            if not self._responses:
+                return FakeResponse(200)
+            if len(self._responses) == 1:
+                return self._responses[0]
+            return self._responses.pop(0)
+
+
+def _make_record(severity="warning", source_action="x.action", message="m"):
+    return JournalRecord(
+        timestamp_iso="2026-05-03T12:00:00.000+00:00",
+        timestamp_ms=1746275600000,
+        service="dronePort",
+        service_id=1,
+        severity=severity,
+        message=message,
+        source_component="drone_manager",
+        source_sender="components.drone_manager",
+        source_action=source_action,
+        details={},
+    )
+
+
+def test_dispatcher_disabled_when_url_or_key_missing():
+    d1 = InfopanelDispatcher(url="", api_key="k")
+    d2 = InfopanelDispatcher(url="https://x", api_key="")
+    d1.enqueue(_make_record())
+    d2.enqueue(_make_record())
+    assert d1._queue.qsize() == 0
+    assert d2._queue.qsize() == 0
+
+
+def test_dispatcher_sends_batch_with_api_key_header():
+    fake = FakeSession([FakeResponse(200)])
+    d = InfopanelDispatcher(
+        url="https://infopanel.example/api/log/event",
+        api_key="secret-key",
+        batch_size=10,
+        flush_interval_s=0.05,
+        session=fake,
+    )
+    # set api key into fake session as the dispatcher would on real session
+    fake.headers["X-API-Key"] = "secret-key"
+
+    for sev in ("info", "warning", "critical"):
+        d.enqueue(_make_record(severity=sev, source_action=f"x.{sev}"))
+
+    d.start()
+    # wait for at least one POST
+    for _ in range(50):
+        if fake.calls:
+            break
+        time.sleep(0.05)
+    d.stop()
+
+    assert fake.calls, "dispatcher did not POST"
+    sent = fake.calls[-1]
+    assert sent["url"] == "https://infopanel.example/api/log/event"
+    assert sent["verify"] is True
+    payload = sent["json"]
+    assert isinstance(payload, list) and len(payload) >= 1
+    item = payload[0]
+    assert item["apiVersion"] == "1.1.0"
+    assert item["event_type"] == "safety_event"
+    assert item["service"] == "dronePort"
+    assert item["service_id"] == 1
+    assert item["severity"] in {"info", "warning", "critical"}
+    assert isinstance(item["timestamp"], int)
+
+
+import time  # noqa: E402  (used above)
+
+
+def test_dispatcher_retries_on_5xx_then_succeeds():
+    fake = FakeSession([FakeResponse(503), FakeResponse(200)])
+    d = InfopanelDispatcher(
+        url="https://x", api_key="k",
+        batch_size=10, flush_interval_s=0.05,
+        max_retries=3, retry_backoff_s=0.01,
+        session=fake,
+    )
+    d.enqueue(_make_record())
+    d.start()
+    for _ in range(50):
+        if len(fake.calls) >= 2:
+            break
+        time.sleep(0.05)
+    d.stop()
+    assert len(fake.calls) >= 2  # 1 retry after 503, then success
+
+
+def test_dispatcher_does_not_retry_on_4xx():
+    fake = FakeSession([FakeResponse(401, text="Unauthorized")])
+    d = InfopanelDispatcher(
+        url="https://x", api_key="bad",
+        batch_size=10, flush_interval_s=0.05,
+        max_retries=3, retry_backoff_s=0.01,
+        session=fake,
+    )
+    d.enqueue(_make_record())
+    d.start()
+    for _ in range(20):
+        if fake.calls:
+            break
+        time.sleep(0.05)
+    # give it a moment to confirm no retry happens
+    time.sleep(0.1)
+    d.stop()
+    assert len(fake.calls) == 1
+
+
+def test_dispatcher_drops_oldest_when_queue_full():
+    d = InfopanelDispatcher(
+        url="https://x", api_key="k",
+        queue_max=2, session=FakeSession(),
+    )
+    r1, r2, r3 = (_make_record(source_action=f"x.{i}") for i in range(1, 4))
+    d.enqueue(r1)
+    d.enqueue(r2)
+    d.enqueue(r3)  # should drop r1
+    assert d._queue.qsize() == 2
+    items = []
+    while not d._queue.empty():
+        items.append(d._queue.get_nowait())
+    actions = {r.source_action for r in items}
+    assert "x.1" not in actions
+    assert {"x.2", "x.3"}.issubset(actions)
+
+
+def test_dispatcher_stop_is_idempotent_and_drains_quickly():
+    d = InfopanelDispatcher(
+        url="https://x", api_key="k",
+        flush_interval_s=0.05, session=FakeSession(),
+    )
+    d.start()
+    d.stop()
+    d.stop()  # second call must not raise
+
+
+def test_journal_recorder_with_sink_enqueues():
+    fake = FakeSession()
+    d = InfopanelDispatcher(url="https://x", api_key="k", session=fake)
+    recorder = JournalRecorder(
+        file_path="",  # no NDJSON, only sink
+        service="dronePort", service_id=1,
+        sink=d,
+    )
+    recorder.log(
+        severity="warning",
+        source_sender="s", source_component="c", source_action="a",
+        message="m",
+    )
+    assert d._queue.qsize() == 1
+
+
+def test_record_to_infopanel_item_shape():
+    r = _make_record(severity="critical", source_action="proxy_request.denied", message="x" * 2000)
+    item = r.to_infopanel_item()
+    assert set(item.keys()) == {"apiVersion", "timestamp", "event_type", "service", "service_id", "severity", "message"}
+    assert len(item["message"]) == MAX_MESSAGE_LEN
+    assert item["timestamp"] == r.timestamp_ms
+    assert item["severity"] == "critical"

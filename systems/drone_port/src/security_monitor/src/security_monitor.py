@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Set, Tuple
 
 from broker.src.system_bus import SystemBus
 from sdk.base_component import BaseComponent
-from sdk.security_journal import JournalRecorder
+from sdk.security_journal import InfopanelDispatcher, JournalRecorder
 from systems.drone_port.src.drone_manager.topics import ComponentTopics as DroneManagerTopics
 from systems.drone_port.src.orchestrator.topics import ComponentTopics as OrchestratorTopics
 from systems.drone_port.src.security_monitor import config
@@ -27,15 +27,28 @@ class SecurityMonitorComponent(BaseComponent):
         topic: str = "",
         policies: Optional[Set[PolicyKey]] = None,
         journal: Optional[JournalRecorder] = None,
+        dispatcher: Optional[InfopanelDispatcher] = None,
     ):
         self._policies = set(policies) if policies is not None else config.load_policies_from_env()
         self._audit_topic = config.audit_topic()
+        if dispatcher is None and journal is None:
+            dispatcher = InfopanelDispatcher(
+                url=config.infopanel_url(),
+                api_key=config.infopanel_api_key(),
+                batch_size=config.infopanel_batch_size(),
+                flush_interval_s=config.infopanel_flush_interval_s(),
+                max_retries=config.infopanel_max_retries(),
+                verify_tls=config.infopanel_verify_tls(),
+                logger=logger,
+            )
+        self._dispatcher = dispatcher
         self._journal = journal or JournalRecorder(
             file_path=config.journal_file_path(),
             min_severity=config.journal_min_severity(),
             service=config.service_name(),
             service_id=config.service_id(),
             logger=logger,
+            sink=self._dispatcher,
         )
         super().__init__(
             component_id=component_id,
@@ -43,6 +56,16 @@ class SecurityMonitorComponent(BaseComponent):
             topic=(topic or config.component_topic()),
             bus=bus,
         )
+
+    def start(self):
+        if self._dispatcher is not None:
+            self._dispatcher.start()
+        super().start()
+
+    def stop(self):
+        super().stop()
+        if self._dispatcher is not None:
+            self._dispatcher.stop()
 
     def _register_handlers(self):
         self.register_handler(SecurityMonitorActions.PROXY_REQUEST, self._handle_proxy_request)
