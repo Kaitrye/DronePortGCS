@@ -1,4 +1,4 @@
-.PHONY: help init unit-test unit-test-with-coverage integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down web-demo
+.PHONY: help init unit-test unit-test-with-coverage integration-test integration-test-run tests docker-up docker-down docker-logs docker-ps docker-clean gcs-system-up gcs-system-down drone-port-system-up drone-port-system-down web-demo smoke-events
 
 # Абсолютный путь: иначе при PIPENV_PIPFILE=config/Pipfile pipenv часто ставит cwd=config/,
 # и HTML оказывается в config/artifacts/..., а CI ждёт artifacts/ в корне репо.
@@ -30,6 +30,8 @@ help:
 	@echo "make drone-port-system-up   - Поднять DronePort"
 	@echo "make drone-port-system-down - Остановить DronePort"
 	@echo "make web-demo         - Запустить веб-сервер demo через pipenv"
+	@echo "make smoke-events     - Прогнать сценарии для smoke-проверки журнала+Инфопанели"
+	@echo "                        (передать аргументы: SMOKE_ARGS=\"--system gcs --repeat 3\")"
 
 init:
 	@git submodule update --init --recursive
@@ -93,6 +95,10 @@ drone-port-system-down:
 
 web-demo:
 	@PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python demo/web_demo.py
+
+smoke-events:
+	@$(LOAD_ENV) && PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) \
+		pipenv run python scripts/send_events.py $(SMOKE_ARGS)
 
 tests: unit-test integration-test
 

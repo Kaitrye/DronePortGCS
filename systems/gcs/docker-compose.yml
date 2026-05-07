@@ -186,6 +186,10 @@ services:
       - INFOPANEL_MAX_RETRIES=${INFOPANEL_MAX_RETRIES:-5}
       - INFOPANEL_VERIFY_TLS=${INFOPANEL_VERIFY_TLS:-true}
       - PYTHONUNBUFFERED=1
+    extra_hosts:
+      # Доступ к Инфопанели, запущенной в отдельном compose-проекте на той же машине.
+      # Используем для INFOPANEL_URL=https://host.docker.internal/api/log/event при локальном smoke.
+      - "host.docker.internal:host-gateway"
     volumes:
       - gcs_journal:/var/log/drones
     networks:
