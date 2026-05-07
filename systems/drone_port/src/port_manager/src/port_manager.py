@@ -51,6 +51,11 @@ class PortManager(BaseComponent):
         if not drone_id or not str(drone_id).strip():
             return {"error": "drone_id required"}
         logger.info("[%s] request_landing drone_id=%s", self.component_id, drone_id)
+        self._log_security(
+            "info", "port.request_landing.received",
+            f"Landing port allocation requested for drone {drone_id}",
+            details={"drone_id": drone_id},
+        )
 
         response = self.bus.request(
             ComponentTopics.STATE_STORE,
@@ -76,12 +81,21 @@ class PortManager(BaseComponent):
                         },
                     }
                 )
-
+                self._log_security(
+                    "notice", "port.reserved",
+                    f"Port {port['port_id']} reserved for drone {drone_id}",
+                    details={"drone_id": drone_id, "port_id": port["port_id"]},
+                )
                 return {
                     "port_id": port["port_id"],
                 }
 
         logger.warning("[%s] request_landing no free ports for drone_id=%s", self.component_id, drone_id)
+        self._log_security(
+            "warning", "port.exhausted",
+            f"No free ports for drone {drone_id}",
+            details={"drone_id": drone_id, "ports_total": len(ports)},
+        )
         return {
             "error": "No free ports"
         }
@@ -98,6 +112,11 @@ class PortManager(BaseComponent):
         if not port_id or not str(port_id).strip():
             return None
         logger.info("[%s] free_slot port_id=%s payload=%r", self.component_id, port_id, payload)
+        self._log_security(
+            "info", "port.free_slot.received",
+            f"Free slot requested for port {port_id}",
+            details={"port_id": port_id, "drone_id": payload.get("drone_id")},
+        )
 
         self.bus.publish(
             ComponentTopics.STATE_STORE,
@@ -110,7 +129,11 @@ class PortManager(BaseComponent):
                 },
             }
         )
-        
+        self._log_security(
+            "notice", "port.released",
+            f"Port {port_id} released",
+            details={"port_id": port_id, "previous_drone": payload.get("drone_id")},
+        )
         return None
 
     def _handle_get_port_status(self, message: Dict[str, Any]) -> Dict[str, Any]:

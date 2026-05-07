@@ -234,3 +234,48 @@ def test_handle_task_start_omits_correlation_id_when_missing(component, mock_bus
     mock_bus.publish.assert_called_once()
     _, publish_message = mock_bus.publish.call_args.args
     assert "correlation_id" not in publish_message
+
+
+# -------------------------
+# Журнал безопасности (_log_security)
+# -------------------------
+
+from systems.gcs.src.security_monitor.topics import (  # noqa: E402
+    ExternalTopics as SecurityMonitorTopics,
+    SecurityMonitorActions,
+)
+
+
+def _security_log_messages(mock_bus, monitor_topic):
+    return [
+        msg for topic, msg in (call.args for call in mock_bus.publish.call_args_list)
+        if topic == monitor_topic and msg.get("action") == SecurityMonitorActions.LOG_EVENT
+    ]
+
+
+def test_task_submit_failure_logs_warning(component, mock_bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", SecurityMonitorTopics.GCS)
+    mock_bus.request.return_value = None  # planner timeout
+
+    component._handle_task_submit({"payload": {"type": "delivery"}})
+
+    logs = _security_log_messages(mock_bus, SecurityMonitorTopics.GCS)
+    assert any(
+        m["payload"]["severity"] == "warning"
+        and m["payload"]["source_action"] == "task_submit.failed"
+        for m in logs
+    )
+
+
+def test_task_submit_success_logs_notice(component, mock_bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", SecurityMonitorTopics.GCS)
+    mock_bus.request.return_value = {"success": True, "payload": {"waypoints": [1, 2, 3, 4]}}
+
+    component._handle_task_submit({"payload": {"type": "delivery"}})
+
+    logs = _security_log_messages(mock_bus, SecurityMonitorTopics.GCS)
+    assert any(
+        m["payload"]["severity"] == "notice"
+        and m["payload"]["source_action"] == "task_submit.approved"
+        for m in logs
+    )

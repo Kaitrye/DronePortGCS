@@ -42,6 +42,11 @@ class OrchestratorComponent(BaseComponent):
             correlation_id,
             len(task_payload.get("waypoints") or []),
         )
+        self._log_security(
+            "info", "task_submit.received",
+            f"Task submit received, mission_id={mission_id}",
+            details={"mission_id": mission_id, "waypoints": len(task_payload.get("waypoints") or [])},
+        )
 
         planned_message = {
             "action": PathPlannerActions.PATH_PLAN,
@@ -66,14 +71,24 @@ class OrchestratorComponent(BaseComponent):
             waypoints = payload.get("waypoints", [])
 
             if isinstance(waypoints, list) and len(waypoints) >= 4:
+                self._log_security(
+                    "notice", "task_submit.approved",
+                    f"Mission {mission_id} planned with {len(waypoints)} waypoints",
+                    details={"mission_id": mission_id, "waypoints": len(waypoints)},
+                )
                 return {
                     "from": self.component_id,
                     "mission_id": mission_id,
                     "waypoints": waypoints,
                 }
 
+        self._log_security(
+            "warning", "task_submit.failed",
+            f"Failed to build route for mission {mission_id}",
+            details={"mission_id": mission_id},
+        )
         return {
-            "from": self.component_id, 
+            "from": self.component_id,
             "error": "failed to build route"
         }
 
@@ -89,6 +104,11 @@ class OrchestratorComponent(BaseComponent):
             mission_id,
             drone_id,
             correlation_id,
+        )
+        self._log_security(
+            "info", "task_assign.received",
+            f"Task assign received: mission={mission_id}, drone={drone_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
         )
 
         prepared_message = {
@@ -139,6 +159,11 @@ class OrchestratorComponent(BaseComponent):
                     drone_id,
                 )
 
+                self._log_security(
+                    "notice", "task_assign.approved",
+                    f"Mission {mission_id} assigned to drone {drone_id}",
+                    details={"mission_id": mission_id, "drone_id": drone_id},
+                )
                 return {
                     "ok": True,
                     "mission_id": mission_id,
@@ -146,6 +171,11 @@ class OrchestratorComponent(BaseComponent):
                     "forwarded_action": DroneManagerActions.MISSION_UPLOAD,
                 }
 
+        self._log_security(
+            "error", "task_assign.mission_prepare_failed",
+            f"Mission converter failed for mission {mission_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
+        )
         return {
             "ok": False,
             "mission_id": mission_id,
@@ -165,6 +195,11 @@ class OrchestratorComponent(BaseComponent):
             mission_id,
             drone_id,
             correlation_id,
+        )
+        self._log_security(
+            "info", "task_start.received",
+            f"Task start received: mission={mission_id}, drone={drone_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
         )
 
         publish_message = {
@@ -191,6 +226,11 @@ class OrchestratorComponent(BaseComponent):
             drone_id,
         )
 
+        self._log_security(
+            "notice", "task_start.approved",
+            f"Mission {mission_id} start command sent to drone {drone_id}",
+            details={"mission_id": mission_id, "drone_id": drone_id},
+        )
         return {
             "ok": True,
             "mission_id": mission_id,

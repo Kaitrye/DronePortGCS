@@ -26,7 +26,7 @@ docker-up: prepare
 docker-up-no-broker: prepare
 	@set -a && . $(GENERATED)/.env && set +a && \
 		$(DOCKER_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build --no-deps \
-		redis mission_store drone_store mission_converter orchestrator path_planner drone_manager
+		redis mission_store drone_store mission_converter orchestrator path_planner drone_manager security_monitor
 
 docker-down:
 	-$(DOCKER_COMPOSE) --profile kafka down 2>/dev/null
@@ -34,7 +34,7 @@ docker-down:
 
 docker-down-no-broker:
 	-@set -a && . $(GENERATED)/.env && set +a && \
-		$(DOCKER_COMPOSE) rm -sf mission_store drone_store mission_converter orchestrator path_planner drone_manager redis 2>/dev/null
+		$(DOCKER_COMPOSE) rm -sf mission_store drone_store mission_converter orchestrator path_planner drone_manager security_monitor redis 2>/dev/null
 
 docker-logs:
 	@set -a && . $(GENERATED)/.env && set +a && \

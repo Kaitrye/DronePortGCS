@@ -17,6 +17,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=state_store
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -39,6 +40,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=orchestrator
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -59,6 +61,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=drone_manager
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -79,6 +82,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=drone_registry
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -101,6 +105,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=port_manager
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -123,6 +128,7 @@ services:
     profiles: ["kafka", "mqtt"]
     environment:
       - COMPONENT_ID=charging_manager
+      - SECURITY_MONITOR_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
       - INSTANCE_ID=${INSTANCE_ID:-1}
       - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
       - BROKER_TYPE=${BROKER_TYPE:-mqtt}
@@ -137,6 +143,46 @@ services:
     networks:
       - drones_net
     restart: unless-stopped
+
+  security_monitor:
+    build:
+      context: ../..
+      dockerfile: systems/drone_port/src/security_monitor/docker/Dockerfile
+    profiles: ["kafka", "mqtt"]
+    environment:
+      - COMPONENT_ID=drone_port_security_monitor
+      - COMPONENT_TOPIC=${DRONE_PORT_MONITOR_TOPIC:-systems.drone_port}
+      - INSTANCE_ID=${INSTANCE_ID:-1}
+      - SYSTEM_NAME=${SYSTEM_NAME:-drone_port}
+      - BROKER_TYPE=${BROKER_TYPE:-mqtt}
+      - BROKER_USER=${ADMIN_USER:-admin}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S=${SECURITY_MONITOR_PROXY_REQUEST_TIMEOUT_S:-10.0}
+      - SECURITY_JOURNAL_FILE_PATH=${SECURITY_JOURNAL_FILE_PATH:-/var/log/drones/security_journal.ndjson}
+      - SECURITY_JOURNAL_MIN_SEVERITY=${SECURITY_JOURNAL_MIN_SEVERITY:-info}
+      - SECURITY_JOURNAL_SERVICE_ID=${DRONE_PORT_SERVICE_ID:-1}
+      - INFOPANEL_URL=${INFOPANEL_URL:-}
+      - INFOPANEL_API_KEY=${INFOPANEL_DRONE_PORT_API_KEY:-}
+      - INFOPANEL_BATCH_SIZE=${INFOPANEL_BATCH_SIZE:-50}
+      - INFOPANEL_FLUSH_INTERVAL_S=${INFOPANEL_FLUSH_INTERVAL_S:-5.0}
+      - INFOPANEL_MAX_RETRIES=${INFOPANEL_MAX_RETRIES:-5}
+      - INFOPANEL_VERIFY_TLS=${INFOPANEL_VERIFY_TLS:-true}
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      # Доступ к Инфопанели, запущенной в отдельном compose-проекте на той же машине.
+      # Используем для INFOPANEL_URL=https://host.docker.internal/api/log/event при локальном smoke.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - drone_port_journal:/var/log/drones
+    networks:
+      - drones_net
+    restart: unless-stopped
+
+volumes:
+  drone_port_journal:
 
 networks:
   drones_net:

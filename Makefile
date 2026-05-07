@@ -75,21 +75,21 @@ gcs-system-up:
 	@$(MAKE) -C systems/gcs prepare
 	@set -a && . systems/gcs/.generated/.env && set +a && \
 		$(GCS_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build --no-deps \
-		redis mission_store drone_store mission_converter orchestrator path_planner drone_manager
+		redis mission_store drone_store mission_converter orchestrator path_planner drone_manager security_monitor
 
 gcs-system-down:
 	-@set -a && . systems/gcs/.generated/.env && set +a && \
-		$(GCS_COMPOSE) rm -sf redis mission_store drone_store mission_converter orchestrator path_planner drone_manager 2>/dev/null
+		$(GCS_COMPOSE) rm -sf redis mission_store drone_store mission_converter orchestrator path_planner drone_manager security_monitor 2>/dev/null
 
 drone-port-system-up:
 	@$(MAKE) -C systems/drone_port prepare
 	@set -a && . systems/drone_port/.generated/.env && set +a && \
 		$(DRONE_PORT_COMPOSE) --profile $${BROKER_TYPE:-mqtt} up -d --build --no-deps \
-		redis state_store port_manager drone_registry charging_manager drone_manager orchestrator
+		redis state_store port_manager drone_registry charging_manager drone_manager orchestrator security_monitor
 
 drone-port-system-down:
 	-@set -a && . systems/drone_port/.generated/.env && set +a && \
-		$(DRONE_PORT_COMPOSE) rm -sf redis state_store port_manager drone_registry charging_manager drone_manager orchestrator 2>/dev/null
+		$(DRONE_PORT_COMPOSE) rm -sf redis state_store port_manager drone_registry charging_manager drone_manager orchestrator security_monitor 2>/dev/null
 
 web-demo:
 	@PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python demo/web_demo.py

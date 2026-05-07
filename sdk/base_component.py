@@ -3,11 +3,13 @@
 
 Аналогичен BaseSystem, но без health check и run_forever.
 """
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Callable, Optional
 
 from broker.src.system_bus import SystemBus
 from sdk.messages import create_response
+from sdk.security_journal import LOG_EVENT_ACTION
 
 
 class BaseComponent(ABC):
@@ -118,3 +120,39 @@ class BaseComponent(ABC):
         self.bus.unsubscribe(self.topic)
         self.bus.stop()
         print(f"[{self.component_id}] Stopped")
+
+    def _log_security(
+        self,
+        severity: str,
+        source_action: str,
+        message: str,
+        *,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Публикует событие журнала безопасности в security_monitor через bus.
+
+        Топик security_monitor берётся из env ``SECURITY_MONITOR_TOPIC``;
+        если не задан — вызов становится no-op (для unit-тестов и dev-окружения,
+        где монитор не поднят). Вызов не блокирует и не бросает исключений —
+        журнал не должен ломать работу компонента.
+        """
+        topic = (os.environ.get("SECURITY_MONITOR_TOPIC") or "").strip()
+        if not topic:
+            return
+        try:
+            self.bus.publish(
+                topic,
+                {
+                    "action": LOG_EVENT_ACTION,
+                    "sender": self.topic,
+                    "payload": {
+                        "severity": severity,
+                        "source_component": self.component_type,
+                        "source_action": source_action,
+                        "message": message,
+                        "details": details or {},
+                    },
+                },
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[{self.component_id}] _log_security failed: {exc}")

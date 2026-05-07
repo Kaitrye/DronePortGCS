@@ -169,6 +169,15 @@ def prepare_system(system_dir: str):
     for svc_name, svc in component_services.items():
         merged["services"][svc_name] = svc
 
+    # Pass through top-level named volumes from broker and system compose
+    merged_volumes = {}
+    for source in (broker_compose, system_compose):
+        vols = source.get("volumes")
+        if isinstance(vols, dict):
+            merged_volumes.update(vols)
+    if merged_volumes:
+        merged["volumes"] = merged_volumes
+
     # --- Write output ---
     compose_out = output_dir / "docker-compose.yml"
     env_out = output_dir / ".env"

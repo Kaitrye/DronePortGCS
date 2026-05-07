@@ -95,3 +95,44 @@ def test_message_routing_unknown_action(comp, bus):
     msg = {"action": "nonexistent", "sender": "x"}
     comp._handle_message(msg)
     bus.publish.assert_not_called()
+
+
+def test_log_security_no_op_when_env_unset(comp, bus, monkeypatch):
+    monkeypatch.delenv("SECURITY_MONITOR_TOPIC", raising=False)
+    comp._log_security("warning", "x.denied", "msg", details={"k": "v"})
+    bus.publish.assert_not_called()
+
+
+def test_log_security_publishes_when_topic_set(comp, bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", "systems.drone_port")
+    comp._log_security(
+        "warning",
+        "request_landing.no_free_ports",
+        "Landing denied",
+        details={"drone_id": "DR-1"},
+    )
+
+    bus.publish.assert_called_once()
+    topic, message = bus.publish.call_args[0]
+    assert topic == "systems.drone_port"
+    assert message["action"] == "log_event"
+    assert message["sender"] == "components.test"
+    payload = message["payload"]
+    assert payload["severity"] == "warning"
+    assert payload["source_component"] == "test"
+    assert payload["source_action"] == "request_landing.no_free_ports"
+    assert payload["message"] == "Landing denied"
+    assert payload["details"] == {"drone_id": "DR-1"}
+
+
+def test_log_security_swallows_bus_errors(comp, bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", "systems.drone_port")
+    bus.publish.side_effect = RuntimeError("broker down")
+    comp._log_security("error", "x.failed", "boom")  # must not raise
+
+
+def test_log_security_defaults_details_to_empty_dict(comp, bus, monkeypatch):
+    monkeypatch.setenv("SECURITY_MONITOR_TOPIC", "systems.gcs")
+    comp._log_security("info", "x.ok", "ok")
+    payload = bus.publish.call_args[0][1]["payload"]
+    assert payload["details"] == {}
