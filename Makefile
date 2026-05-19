@@ -1,232 +1,204 @@
-.PHONY: help init unit-test tests test-dummy-fabric ci-unit-test ci-integration-test ci-test docker-up docker-down docker-logs docker-ps docker-clean prepare-multi e2e-up e2e-test e2e-logs e2e-down e2e e2e-codespace e2e-local
+.PHONY: help \
+	up up-all up-broker up-gcs up-drone-port \
+	down down-all down-broker down-gcs down-drone-port \
+	stop stop-all stop-broker stop-gcs stop-drone-port \
+	ps ps-all ps-broker ps-gcs ps-drone-port \
+	log log-all log-broker log-gcs log-drone-port \
+	logs logs-all logs-broker logs-gcs logs-drone-port \
+	tests \
+	unit-test unit-test-broker unit-test-gcs unit-test-drone-port \
+	integration-test integration-test-broker integration-test-gcs integration-test-drone-port
 
 PROJECT_ROOT := $(CURDIR)
-DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file docker/.env
-LOAD_ENV = set -a && . docker/.env && set +a
-PIPENV_PIPFILE = config/Pipfile
-PYTEST_CONFIG = config/pyproject.toml
-REQUIREMENTS = config/requirements.txt
+PIPENV_PIPFILE := config/Pipfile
+PYTEST_CONFIG := config/pyproject.toml
+
+SYSTEMS := drone_port gcs
+MULTI_OUTPUT := .generated/all
+
+BROKER_COMPOSE := docker compose -f docker/docker-compose.yml --env-file docker/.env
+MULTI_COMPOSE := docker compose -f $(MULTI_OUTPUT)/docker-compose.yml --env-file $(MULTI_OUTPUT)/.env
+GCS_COMPOSE := docker compose -f systems/gcs/.generated/docker-compose.yml --env-file systems/gcs/.generated/.env
+DRONE_PORT_COMPOSE := docker compose -f systems/drone_port/.generated/docker-compose.yml --env-file systems/drone_port/.generated/.env
 
 help:
-	@echo "make init              - Установить pipenv и зависимости"
-	@echo "make unit-test         - Unit тесты (SDK + broker + standalone компоненты)"
-	@echo "make tests             - Все тесты"
-	@echo "make test-dummy-fabric - E2E dummy_fabric (pytest systems/dummy_fabric/tests/test_e2e.py)"
-	@echo "make ci-unit-test      - CI: unit тесты всех components/ и systems/"
-	@echo "make ci-integration-test - CI: integration тесты всех systems/"
-	@echo "make ci-test           - CI: unit + integration (все components/ и systems/)"
-	@echo "make docker-up         - Запустить инфраструктуру брокера"
-	@echo "make docker-down       - Остановить"
-	@echo "make docker-logs       - Логи"
-	@echo "make docker-ps         - Статус"
-	@echo "make docker-clean      - Очистка"
-	@echo "make prepare-multi SYSTEMS=\"drone_port gcs\" - Сгенерировать единый compose для нескольких систем"
-	@echo "make e2e-up            - Поднять всё окружение E2E (4 системы + брокер + DroneAnalytics)"
-	@echo "make e2e-test          - Запустить E2E тесты (pytest tests/e2e/)"
-	@echo "make e2e-logs          - Показать события из DroneAnalytics"
-	@echo "make e2e-down          - Остановить и очистить E2E окружение"
-	@echo "make e2e               - e2e-up + e2e-test + e2e-logs + e2e-down"
-	@echo "make e2e-local         - Полный E2E локально (pip, со всеми системами и аналитикой)"
-	@echo "make e2e-codespace     - Полный E2E в GitHub Codespace (pip, без аналитики)"
-
-init:
-	@command -v pipenv >/dev/null 2>&1 || pip install pipenv
-	PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv install --dev
-
-unit-test:
-	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
-		tests/unit/ \
-		components/dummy_component/tests/ \
-		-v
-
-tests: unit-test
-
-test-dummy-fabric:
-	@echo "=== dummy_fabric E2E (нужны Fabric + fabric-proxy) ==="
-	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) \
-		systems/dummy_fabric/tests/test_e2e.py -v -s --tb=short
-
-# --- CI: автообнаружение тестов во всех components/ и systems/ ---
-
-ci-unit-test:
-	@echo "=== SDK unit tests ==="
-	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) tests/unit/ -v
+	@echo "Запуск:"
+	@echo "  make up                 - Запустить broker + drone_port + gcs"
+	@echo "  make up-broker          - Запустить только broker"
+	@echo "  make up-drone-port      - Запустить только DronePort + broker"
+	@echo "  make up-gcs             - Запустить только GCS + broker"
 	@echo ""
-	@fail=0; \
-	for dir in components/*/ systems/*/; do \
-		[ -d "$$dir" ] || continue; \
-		if [ -d "$$dir/tests/unit" ]; then \
-			echo "=== Unit tests: $$dir ==="; \
-			PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) "$$dir/tests/unit/" -v || fail=1; \
-			echo ""; \
-		elif [ -d "$$dir/tests" ] && ls "$$dir"/tests/test_*unit*.py >/dev/null 2>&1; then \
-			echo "=== Unit tests (legacy): $$dir ==="; \
-			PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest -c $(PYTEST_CONFIG) "$$dir"/tests/test_*unit*.py -v || fail=1; \
-			echo ""; \
-		fi; \
-	done; \
-	if [ $$fail -ne 0 ]; then echo "=== Some unit tests FAILED ==="; exit 1; fi
+	@echo "Docker:"
+	@echo "  make down              - docker compose down для broker + drone_port + gcs"
+	@echo "  make stop              - docker compose stop для broker + drone_port + gcs"
+	@echo "  make ps                - docker compose ps для broker + drone_port + gcs"
+	@echo "  make log               - docker compose logs -f для broker + drone_port + gcs"
+	@echo "  make down-broker|stop-broker|ps-broker|log-broker"
+	@echo "  make down-drone-port|stop-drone-port|ps-drone-port|log-drone-port"
+	@echo "  make down-gcs|stop-gcs|ps-gcs|log-gcs"
+	@echo ""
+	@echo "Unit-тесты:"
+	@echo "  make unit-test          - Все unit-тесты: broker + drone_port + gcs"
+	@echo "  make unit-test-broker   - Unit-тесты broker/SDK"
+	@echo "  make unit-test-drone-port - Unit-тесты DronePort"
+	@echo "  make unit-test-gcs      - Unit-тесты GCS"
+	@echo ""
+	@echo "Интеграционные тесты:"
+	@echo "  make integration-test   - Все integration-тесты: broker + drone_port + gcs"
+	@echo "  make integration-test-broker - Integration-тесты broker"
+	@echo "  make integration-test-drone-port - Integration-тесты DronePort"
+	@echo "  make integration-test-gcs - Integration-тесты GCS"
+	@echo "  make tests              - Все тесты: unit-test + integration-test"
 
-ci-integration-test:
-	@fail=0; \
-	for dir in components/*/ systems/*/; do \
-		[ -d "$$dir" ] || continue; \
-		if [ -f "$$dir/Makefile" ] && grep -qE '^test-all-docker:|^integration-test:' "$$dir/Makefile" 2>/dev/null; then \
-			target=$$(grep -oE '^(test-all-docker|integration-test):' "$$dir/Makefile" | head -1 | tr -d ':'); \
-			echo "=== Integration tests: $$dir (make $$target) ==="; \
-			$(MAKE) -C "$$dir" $$target PROJECT_ROOT=$(PROJECT_ROOT) || fail=1; \
-			echo ""; \
-		else \
-			echo "=== Skipping $$dir (no integration target) ==="; \
-		fi; \
-	done; \
-	if [ $$fail -ne 0 ]; then echo "=== Some integration tests FAILED ==="; exit 1; fi
+up: up-all
 
-ci-test: ci-unit-test ci-integration-test
+up-all:
+	@test -f docker/.env || cp docker/example.env docker/.env
+	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python scripts/prepare_multi.py \
+		--systems $(SYSTEMS) --output $(MULTI_OUTPUT)
+	@set -a && . $(MULTI_OUTPUT)/.env && set +a && \
+		$(MULTI_COMPOSE) --profile $${BROKER_TYPE:-kafka} up -d --build
 
-docker-up:
+up-broker:
 	@test -f docker/.env || cp docker/example.env docker/.env
 	@set -a && . docker/.env && set +a && \
 		profiles="--profile $${BROKER_TYPE:-kafka}"; \
 		[ "$${ENABLE_FABRIC:-false}" = "true" ] && profiles="$$profiles --profile fabric"; \
-		$(DOCKER_COMPOSE) $$profiles up -d --build
+		$(BROKER_COMPOSE) $$profiles up -d --build
 
-docker-down:
-	-$(DOCKER_COMPOSE) --profile kafka --profile fabric down 2>/dev/null
-	-$(DOCKER_COMPOSE) --profile mqtt --profile fabric down 2>/dev/null
+up-gcs:
+	@$(MAKE) -C systems/gcs docker-up PROJECT_ROOT=$(PROJECT_ROOT)
 
-docker-logs:
-	$(DOCKER_COMPOSE) --profile $$(grep BROKER_TYPE docker/.env | cut -d= -f2) logs -f
+up-drone-port:
+	@$(MAKE) -C systems/drone_port docker-up PROJECT_ROOT=$(PROJECT_ROOT)
 
-docker-ps:
-	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+down: down-all
 
-docker-clean:
-	-$(DOCKER_COMPOSE) --profile kafka --profile fabric down -v --rmi local 2>/dev/null
-	-$(DOCKER_COMPOSE) --profile mqtt --profile fabric down -v --rmi local 2>/dev/null
-
-prepare-multi:
-	@if [ -z "$(SYSTEMS)" ]; then \
-		echo "Usage: make prepare-multi SYSTEMS=\"drone_port gcs\""; \
-		exit 1; \
+down-all:
+	@if [ -f "$(MULTI_OUTPUT)/docker-compose.yml" ]; then \
+		$(MULTI_COMPOSE) --profile kafka --profile mqtt --profile fabric down; \
+	else \
+		echo "$(MULTI_OUTPUT)/docker-compose.yml not found. Run: make up"; \
 	fi
-	@PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python scripts/prepare_multi.py --systems $(SYSTEMS)
 
-# ---------------------------------------------------------------------------
-# E2E: full-scenario Docker test (4 systems + broker + DroneAnalytics)
-# ---------------------------------------------------------------------------
+down-broker:
+	-$(BROKER_COMPOSE) --profile kafka --profile fabric down 2>/dev/null
+	-$(BROKER_COMPOSE) --profile mqtt --profile fabric down 2>/dev/null
 
-E2E_SYSTEMS = Agregator insurer operator orvd_system team1-regulator_operation_devsecops gcs drone_port cyber_drons
-E2E_OUTPUT = .generated/e2e
-E2E_COMPOSE = docker compose -f $(E2E_OUTPUT)/docker-compose.yml -f tests/e2e/analytics-compose.yml --env-file $(E2E_OUTPUT)/.env
-E2E_COMPOSE_NO_ANALYTICS = docker compose -f $(E2E_OUTPUT)/docker-compose.yml --env-file $(E2E_OUTPUT)/.env
-E2E_PROFILE = kafka
+down-gcs:
+	@$(MAKE) -C systems/gcs docker-down PROJECT_ROOT=$(PROJECT_ROOT)
 
-e2e-up:
-	@echo "=== Generating multi-system compose ==="
-	@$(LOAD_ENV) && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run python scripts/prepare_multi.py \
-		--systems $(E2E_SYSTEMS) --output $(E2E_OUTPUT)
-	@echo "ANALYTICS_URL=http://analytics-backend:8080" >> $(E2E_OUTPUT)/.env
-	@echo "ANALYTICS_API_KEY=test-api-key-e2e-12345" >> $(E2E_OUTPUT)/.env
-	@echo "ANALYTICS_PORT=8090" >> $(E2E_OUTPUT)/.env
-	@echo "DELIVERY_DRONE_HEALTH_PORT=8095" >> $(E2E_OUTPUT)/.env
-	@echo "=== Starting E2E environment ==="
-	$(E2E_COMPOSE) --profile $(E2E_PROFILE) up -d --build
-	@echo "=== Waiting for services to start ==="
-	@for i in $$(seq 1 30); do \
-		curl -sf http://localhost:8080/health >/dev/null 2>&1 && break; \
-		sleep 3; \
-	done
-	@echo "=== E2E environment is up ==="
+down-drone-port:
+	@$(MAKE) -C systems/drone_port docker-down PROJECT_ROOT=$(PROJECT_ROOT)
 
-e2e-test:
-	@echo "=== Running E2E tests ==="
-	@$(LOAD_ENV) && PIPENV_PIPFILE=$(PIPENV_PIPFILE) pipenv run pytest tests/e2e/test_e2e_scenario.py -v -s \
-		--tb=short 2>&1 || (echo "E2E tests failed"; exit 1)
+stop: stop-all
 
-e2e-logs:
-	@echo "=== Fetching events from DroneAnalytics ==="
-	@TOKEN=$$(curl -sf -X POST http://localhost:8090/auth/login \
-		-H 'Content-Type: application/json' \
-		-d '{"username":"admin","password":"admin1234"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null) && \
-	curl -sf http://localhost:8090/log/event?limit=100 \
-		-H "Authorization: Bearer $$TOKEN" | python3 -m json.tool 2>/dev/null || \
-	echo "(DroneAnalytics not available or no events)"
+stop-all:
+	@if [ -f "$(MULTI_OUTPUT)/docker-compose.yml" ]; then \
+		$(MULTI_COMPOSE) --profile kafka --profile mqtt --profile fabric stop; \
+	else \
+		echo "$(MULTI_OUTPUT)/docker-compose.yml not found. Run: make up"; \
+	fi
 
-e2e-down:
-	@echo "=== Stopping E2E environment ==="
-	-$(E2E_COMPOSE) --profile $(E2E_PROFILE) down -v 2>/dev/null
-	@echo "=== E2E environment stopped ==="
+stop-broker:
+	-$(BROKER_COMPOSE) --profile kafka --profile fabric stop 2>/dev/null
+	-$(BROKER_COMPOSE) --profile mqtt --profile fabric stop 2>/dev/null
 
-e2e: e2e-up e2e-test e2e-logs e2e-down
+stop-gcs:
+	@if [ -f "systems/gcs/.generated/docker-compose.yml" ]; then \
+		$(GCS_COMPOSE) --profile kafka --profile mqtt stop; \
+	else \
+		echo "systems/gcs/.generated/docker-compose.yml not found. Run: make up-gcs"; \
+	fi
 
-# ---------------------------------------------------------------------------
-# E2E Codespace: без pipenv, без привязки к версии Python
-# ---------------------------------------------------------------------------
+stop-drone-port:
+	@if [ -f "systems/drone_port/.generated/docker-compose.yml" ]; then \
+		$(DRONE_PORT_COMPOSE) --profile kafka --profile mqtt stop; \
+	else \
+		echo "systems/drone_port/.generated/docker-compose.yml not found. Run: make up-drone-port"; \
+	fi
 
-e2e-codespace:
-	@echo "=== Initializing git submodules ==="
-	git submodule update --init --recursive
-	@echo "=== Installing Python dependencies ==="
-	pip install -r $(REQUIREMENTS)
-	@echo "=== Preparing docker/.env ==="
-	@test -f docker/.env || cp docker/example.env docker/.env
-	@echo "=== Cleaning leftover build artifacts ==="
-	@sudo rm -rf systems/Agregator/postgres_data 2>/dev/null || true
-	@echo "=== Generating multi-system compose ==="
-	@$(LOAD_ENV) && python scripts/prepare_multi.py --systems $(E2E_SYSTEMS) --output $(E2E_OUTPUT)
-	@echo "DELIVERY_DRONE_HEALTH_PORT=8095" >> $(E2E_OUTPUT)/.env
-	@$(LOAD_ENV) && echo "BROKER_USER=$${ADMIN_USER:-admin}" >> $(E2E_OUTPUT)/.env
-	@$(LOAD_ENV) && echo "BROKER_PASSWORD=$${ADMIN_PASSWORD:-admin_secret_123}" >> $(E2E_OUTPUT)/.env
-	@echo "=== Resetting Docker network ==="
-	@docker network rm $${DOCKER_NETWORK:-drones_net} 2>/dev/null || true
-	@echo "=== Starting E2E environment (no analytics) ==="
-	$(E2E_COMPOSE_NO_ANALYTICS) --profile $(E2E_PROFILE) up -d --build
-	@echo "=== Waiting for Agregator (8081) ==="
-	@for i in $$(seq 1 60); do curl -sf http://localhost:8081/health >/dev/null 2>&1 && echo "Agregator is up" && break; [ $$i -eq 60 ] && echo "WARNING: Agregator did not respond after 300s" || sleep 5; done
-	@echo "=== Waiting for Regulator (8088) ==="
-	@for i in $$(seq 1 30); do curl -sf http://localhost:8088/health >/dev/null 2>&1 && echo "Regulator is up" && break; [ $$i -eq 30 ] && echo "WARNING: Regulator did not respond after 150s" || sleep 5; done
-	@echo "=== Running E2E tests ==="
-	@$(LOAD_ENV) && E2E_SKIP_ANALYTICS=1 python -m pytest tests/e2e/test_e2e_scenario.py -v -s --tb=short 2>&1 || (echo "E2E tests failed"; $(E2E_COMPOSE_NO_ANALYTICS) --profile $(E2E_PROFILE) down -v 2>/dev/null; exit 1)
-	@echo "=== Stopping E2E environment ==="
-	-$(E2E_COMPOSE_NO_ANALYTICS) --profile $(E2E_PROFILE) down -v 2>/dev/null
-	@echo "=== Done ==="
+ps: ps-all
 
-# ---------------------------------------------------------------------------
-# E2E Local: полный локальный запуск со всеми системами и DroneAnalytics
-# ---------------------------------------------------------------------------
+ps-all:
+	@if [ -f "$(MULTI_OUTPUT)/docker-compose.yml" ]; then \
+		$(MULTI_COMPOSE) --profile kafka --profile mqtt --profile fabric ps; \
+	else \
+		echo "$(MULTI_OUTPUT)/docker-compose.yml not found. Run: make up"; \
+	fi
 
-e2e-local:
-	@echo "=== Initializing git submodules ==="
-	git submodule update --init --recursive
-	@echo "=== Installing Python dependencies ==="
-	pip install -r $(REQUIREMENTS)
-	@echo "=== Preparing docker/.env ==="
-	@test -f docker/.env || cp docker/example.env docker/.env
-	@echo "=== Cleaning leftover build artifacts ==="
-	@sudo rm -rf systems/Agregator/postgres_data 2>/dev/null || true
-	@echo "=== Generating multi-system compose ==="
-	@$(LOAD_ENV) && python scripts/prepare_multi.py --systems $(E2E_SYSTEMS) --output $(E2E_OUTPUT)
-	@echo "ANALYTICS_URL=http://analytics-backend:8080" >> $(E2E_OUTPUT)/.env
-	@echo "ANALYTICS_API_KEY=test-api-key-e2e-12345" >> $(E2E_OUTPUT)/.env
-	@echo "ANALYTICS_PORT=8090" >> $(E2E_OUTPUT)/.env
-	@echo "DELIVERY_DRONE_HEALTH_PORT=8095" >> $(E2E_OUTPUT)/.env
-	@$(LOAD_ENV) && echo "BROKER_USER=$${ADMIN_USER:-admin}" >> $(E2E_OUTPUT)/.env
-	@$(LOAD_ENV) && echo "BROKER_PASSWORD=$${ADMIN_PASSWORD:-admin_secret_123}" >> $(E2E_OUTPUT)/.env
-	@echo "=== Resetting Docker network ==="
-	@docker network rm $${DOCKER_NETWORK:-drones_net} 2>/dev/null || true
-	@echo "=== Starting E2E environment (with analytics) ==="
-	$(E2E_COMPOSE) --profile $(E2E_PROFILE) up -d --build
-	@echo "=== Waiting for Agregator (8081) ==="
-	@for i in $$(seq 1 60); do curl -sf http://localhost:8081/health >/dev/null 2>&1 && echo "Agregator is up" && break; [ $$i -eq 60 ] && echo "WARNING: Agregator did not respond after 300s" || sleep 5; done
-	@echo "=== Waiting for Regulator (8088) ==="
-	@for i in $$(seq 1 30); do curl -sf http://localhost:8088/health >/dev/null 2>&1 && echo "Regulator is up" && break; [ $$i -eq 30 ] && echo "WARNING: Regulator did not respond after 150s" || sleep 5; done
-	@echo "=== Waiting for DroneAnalytics (8090) ==="
-	@for i in $$(seq 1 60); do curl -sf http://localhost:8090/ >/dev/null 2>&1 && echo "DroneAnalytics is up" && break; [ $$i -eq 60 ] && echo "WARNING: DroneAnalytics did not respond after 300s" || sleep 5; done
-	@echo "=== Running E2E tests ==="
-	@$(LOAD_ENV) && python -m pytest tests/e2e/test_e2e_scenario.py -v -s --tb=short 2>&1 || (echo "E2E tests failed"; $(E2E_COMPOSE) --profile $(E2E_PROFILE) down -v 2>/dev/null; exit 1)
-	@echo "=== Fetching events from DroneAnalytics ==="
-	@TOKEN=$$(curl -sf -X POST http://localhost:8090/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin1234"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null) && curl -sf http://localhost:8090/log/event?limit=100 -H "Authorization: Bearer $$TOKEN" | python3 -m json.tool 2>/dev/null || echo "(DroneAnalytics not available or no events)"
-	@echo "=== Stopping E2E environment ==="
-	-$(E2E_COMPOSE) --profile $(E2E_PROFILE) down -v 2>/dev/null
-	@echo "=== Done ==="
+ps-broker:
+	@$(BROKER_COMPOSE) --profile kafka --profile mqtt --profile fabric ps
+
+ps-gcs:
+	@if [ -f "systems/gcs/.generated/docker-compose.yml" ]; then \
+		$(GCS_COMPOSE) --profile kafka --profile mqtt ps; \
+	else \
+		echo "systems/gcs/.generated/docker-compose.yml not found. Run: make up-gcs"; \
+	fi
+
+ps-drone-port:
+	@if [ -f "systems/drone_port/.generated/docker-compose.yml" ]; then \
+		$(DRONE_PORT_COMPOSE) --profile kafka --profile mqtt ps; \
+	else \
+		echo "systems/drone_port/.generated/docker-compose.yml not found. Run: make up-drone-port"; \
+	fi
+
+log: log-all
+logs: log
+log-all:
+	@if [ -f "$(MULTI_OUTPUT)/docker-compose.yml" ]; then \
+		$(MULTI_COMPOSE) --profile kafka --profile mqtt --profile fabric logs -f; \
+	else \
+		echo "$(MULTI_OUTPUT)/docker-compose.yml not found. Run: make up"; \
+	fi
+logs-all: log-all
+
+log-broker:
+	@$(BROKER_COMPOSE) --profile kafka --profile mqtt --profile fabric logs -f
+logs-broker: log-broker
+
+log-gcs:
+	@$(MAKE) -C systems/gcs docker-logs PROJECT_ROOT=$(PROJECT_ROOT)
+logs-gcs: log-gcs
+
+log-drone-port:
+	@$(MAKE) -C systems/drone_port docker-logs PROJECT_ROOT=$(PROJECT_ROOT)
+logs-drone-port: log-drone-port
+
+unit-test: unit-test-broker unit-test-drone-port unit-test-gcs
+
+unit-test-broker:
+	@PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) \
+		pipenv run pytest -c $(PYTEST_CONFIG) tests/unit
+
+unit-test-gcs:
+	@$(MAKE) -C systems/gcs unit-test PROJECT_ROOT=$(PROJECT_ROOT)
+
+unit-test-drone-port:
+	@$(MAKE) -C systems/drone_port unit-test PROJECT_ROOT=$(PROJECT_ROOT)
+
+tests: unit-test integration-test
+
+integration-test: integration-test-broker integration-test-drone-port integration-test-gcs
+
+integration-test-broker: up-broker
+	@status=0; \
+	set -a && . docker/.env && set +a && \
+		PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) \
+		pipenv run pytest -c $(PYTEST_CONFIG) tests/integration || status=$$?; \
+	$(BROKER_COMPOSE) --profile kafka --profile fabric down >/dev/null 2>&1 || true; \
+	$(BROKER_COMPOSE) --profile mqtt --profile fabric down >/dev/null 2>&1 || true; \
+	exit $$status
+
+integration-test-gcs:
+	@status=0; \
+	$(MAKE) -C systems/gcs integration-test PROJECT_ROOT=$(PROJECT_ROOT) || status=$$?; \
+	$(MAKE) -C systems/gcs docker-down >/dev/null 2>&1 || true; \
+	exit $$status
+
+integration-test-drone-port:
+	@status=0; \
+	$(MAKE) -C systems/drone_port integration-test PROJECT_ROOT=$(PROJECT_ROOT) || status=$$?; \
+	$(MAKE) -C systems/drone_port docker-down >/dev/null 2>&1 || true; \
+	exit $$status
