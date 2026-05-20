@@ -92,7 +92,7 @@ def kafka_bus():
     os.environ.setdefault("BROKER_TYPE", "kafka")
     os.environ.setdefault("KAFKA_BOOTSTRAP_SERVERS", KAFKA_BOOTSTRAP)
     os.environ.setdefault("BROKER_USER", os.environ.get("ADMIN_USER", "admin"))
-    os.environ.setdefault("BROKER_PASSWORD", os.environ.get("ADMIN_PASSWORD", "admin_secret_123"))
+    os.environ.setdefault("BROKER_PASSWORD", os.environ.get("ADMIN_PASSWORD", "admin123"))
 
     from broker.bus_factory import create_system_bus
     bus = create_system_bus(client_id="e2e_test_host")

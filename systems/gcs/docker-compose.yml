@@ -22,7 +22,7 @@ services:
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -49,7 +49,7 @@ services:
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -75,7 +75,7 @@ services:
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -100,7 +100,7 @@ services:
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -119,7 +119,7 @@ services:
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -140,7 +140,7 @@ services:
       - SYSTEM_NAMESPACE=${SYSTEM_NAMESPACE:-}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -169,7 +169,7 @@ services:
       - AGRODRON_TELEMETRY_TOPIC=${AGRODRON_TELEMETRY_TOPIC:-v1.Agrodron.Agrodron001.telemetry}
       - BROKER_TYPE=${BROKER_TYPE:-kafka}
       - BROKER_USER=${ADMIN_USER:-admin}
-      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin_secret_123}
+      - BROKER_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
