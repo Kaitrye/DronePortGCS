@@ -65,28 +65,35 @@ jobs:
     - name: Docker up broker
       run: make up-broker
 
-    - name: Docker up DronePort
-      run: make -C systems/drone_port docker-up-no-broker
-
-    - name: Docker up GCS
-      run: make -C systems/gcs docker-up-no-broker
-
     - name: Run broker integration-tests
       run: make integration-test-broker-no-up
+
+    - name: Docker up DronePort
+      run: make -C systems/drone_port docker-up-no-broker
 
     - name: Run DronePort integration-tests
       run: make integration-test-drone-port-no-up
 
-    - name: Run GCS integration-tests
-      run: make integration-test-gcs-no-up
-
-    - name: Dump broker logs
+    - name: Dump DronePort logs
       if: always()
       run: |
-        docker logs kafka || true
-        docker logs mosquitto || true
-        docker logs fabric-proxy || true
-        docker logs ledger-gateway || true
+        docker logs drone-port-state_store-1 || true
+        docker logs drone-port-port_manager-1 || true
+        docker logs drone-port-drone_registry-1 || true
+        docker logs drone-port-charging_manager-1 || true
+        docker logs drone-port-drone_manager-1 || true
+        docker logs drone-port-orchestrator-1 || true
+        docker logs drone-port-gateway-1 || true
+
+    - name: Docker down DronePort
+      if: always()
+      run: make down-drone-port
+
+    - name: Docker up GCS
+      run: make -C systems/gcs docker-up-no-broker
+
+    - name: Run GCS integration-tests
+      run: make integration-test-gcs-no-up
 
     - name: Dump GCS logs
       if: always()
@@ -98,19 +105,18 @@ jobs:
         docker logs gcs-path_planner-1 || true
         docker logs gcs-drone_manager-1 || true
 
-    - name: Dump DronePort logs
+    - name: Docker down GCS
       if: always()
-      run: |
-        docker logs drone-port-state_store-1 || true
-        docker logs drone-port-port_manager-1 || true
-        docker logs drone-port-drone_registry-1 || true
-        docker logs drone-port-charging_manager-1 || true
-        docker logs drone-port-drone_manager-1 || true
-        docker logs drone-port-orchestrator-1 || true
+      run: make down-gcs
 
-    - name: Docker down
+    - name: Dump broker logs
       if: always()
       run: |
-        make down-drone-port
-        make down-gcs
-        make down-broker
+        docker logs kafka || true
+        docker logs mosquitto || true
+        docker logs fabric-proxy || true
+        docker logs ledger-gateway || true
+
+    - name: Docker down broker
+      if: always()
+      run: make down-broker
