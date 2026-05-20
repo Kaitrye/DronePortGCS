@@ -7,7 +7,10 @@
 	logs logs-all logs-broker logs-gcs logs-drone-port \
 	tests \
 	unit-test unit-test-broker unit-test-gcs unit-test-drone-port \
-	integration-test integration-test-broker integration-test-gcs integration-test-drone-port
+	integration-test integration-test-no-up \
+	integration-test-broker integration-test-broker-no-up \
+	integration-test-gcs integration-test-gcs-no-up \
+	integration-test-drone-port integration-test-drone-port-no-up
 
 PROJECT_ROOT := $(CURDIR)
 PIPENV_PIPFILE := config/Pipfile
@@ -48,6 +51,7 @@ help:
 	@echo "  make integration-test-broker - Integration-тесты broker"
 	@echo "  make integration-test-drone-port - Integration-тесты DronePort"
 	@echo "  make integration-test-gcs - Integration-тесты GCS"
+	@echo "  make integration-test-no-up - Integration-тесты без управления Docker"
 	@echo "  make tests              - Все тесты: unit-test + integration-test"
 
 up: up-all
@@ -182,14 +186,19 @@ tests: unit-test integration-test
 
 integration-test: integration-test-broker integration-test-drone-port integration-test-gcs
 
+integration-test-no-up: integration-test-broker-no-up integration-test-drone-port-no-up integration-test-gcs-no-up
+
 integration-test-broker: up-broker
 	@status=0; \
-	set -a && . docker/.env && set +a && \
-		PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) \
-		pipenv run pytest -c $(PYTEST_CONFIG) tests/integration || status=$$?; \
+	$(MAKE) integration-test-broker-no-up || status=$$?; \
 	$(BROKER_COMPOSE) --profile kafka --profile fabric down >/dev/null 2>&1 || true; \
 	$(BROKER_COMPOSE) --profile mqtt --profile fabric down >/dev/null 2>&1 || true; \
 	exit $$status
+
+integration-test-broker-no-up:
+	@set -a && . docker/.env && set +a && \
+		PYTHONPATH=. PIPENV_PIPFILE=$(PIPENV_PIPFILE) \
+		pipenv run pytest -c $(PYTEST_CONFIG) tests/integration
 
 integration-test-gcs:
 	@status=0; \
@@ -197,8 +206,14 @@ integration-test-gcs:
 	$(MAKE) -C systems/gcs docker-down >/dev/null 2>&1 || true; \
 	exit $$status
 
+integration-test-gcs-no-up:
+	@$(MAKE) -C systems/gcs integration-test-no-up PROJECT_ROOT=$(PROJECT_ROOT)
+
 integration-test-drone-port:
 	@status=0; \
 	$(MAKE) -C systems/drone_port integration-test PROJECT_ROOT=$(PROJECT_ROOT) || status=$$?; \
 	$(MAKE) -C systems/drone_port docker-down >/dev/null 2>&1 || true; \
 	exit $$status
+
+integration-test-drone-port-no-up:
+	@$(MAKE) -C systems/drone_port integration-test-no-up PROJECT_ROOT=$(PROJECT_ROOT)
